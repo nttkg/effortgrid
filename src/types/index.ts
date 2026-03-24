@@ -48,6 +48,11 @@ export interface ActualCost {
   isDeleted: boolean;
 }
 
+export interface ExecutionData {
+  pvAllocations: PvAllocation[];
+  actualCosts: ActualCost[];
+}
+
 export interface ProgressUpdate {
   id: number;
   wbsElementId: number;

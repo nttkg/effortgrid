@@ -561,6 +561,58 @@ pub async fn add_actual_cost(
     Ok(record)
 }
 
+pub async fn upsert_actual_cost(
+    pool: &SqlitePool,
+    wbs_element_id: i64,
+    user_id: i64,
+    work_date: NaiveDate,
+    actual_cost: Option<f64>,
+) -> DbResult<()> {
+    let mut tx = pool.begin().await?;
+
+    let existing_id: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM actual_costs WHERE wbs_element_id = ? AND work_date = ?",
+    )
+    .bind(wbs_element_id)
+    .bind(work_date)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let cost_to_use = actual_cost.filter(|&ac| ac > 0.0);
+
+    match (cost_to_use, existing_id) {
+        (Some(ac), Some(id)) => {
+            sqlx::query("UPDATE actual_costs SET actual_cost = ? WHERE id = ?")
+                .bind(ac)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        (Some(ac), None) => {
+            sqlx::query(
+                "INSERT INTO actual_costs (wbs_element_id, user_id, work_date, actual_cost) VALUES (?, ?, ?, ?)",
+            )
+            .bind(wbs_element_id)
+            .bind(user_id)
+            .bind(work_date)
+            .bind(ac)
+            .execute(&mut *tx)
+            .await?;
+        }
+        (None, Some(id)) => {
+            sqlx::query("DELETE FROM actual_costs WHERE id = ?")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        (None, None) => {}
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
+
 pub async fn get_actual_costs_for_element(
     pool: &SqlitePool,
     wbs_element_id: i64,
@@ -571,6 +623,44 @@ pub async fn get_actual_costs_for_element(
     .bind(wbs_element_id)
     .fetch_all(pool)
     .await?;
+    Ok(records)
+}
+
+pub async fn list_actuals_for_period(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> DbResult<Vec<ActualCost>> {
+    let activity_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND element_type = 'Activity' AND is_deleted = false",
+    )
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+
+    let activity_ids: Vec<i64> = activity_ids.into_iter().map(|(id,)| id).collect();
+
+    if activity_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Since sqlx `IN (?)` binding for a vec is not directly supported for sqlite, we build the query string.
+    // This is safe because we are not injecting user input, only placeholders.
+    let params = activity_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT * FROM actual_costs WHERE wbs_element_id IN ({}) AND work_date >= ? AND work_date <= ? AND is_deleted = false",
+        params
+    );
+    
+    let mut query = sqlx::query_as::<_, ActualCost>(&sql);
+    for id in &activity_ids {
+        query = query.bind(id);
+    }
+    query = query.bind(start_date).bind(end_date);
+    
+    let records = query.fetch_all(pool).await?;
+
     Ok(records)
 }
 

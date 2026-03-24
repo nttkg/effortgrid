@@ -1,328 +1,298 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  Tabs,
-  Text,
-  Alert,
-  Stack,
-  NavLink,
-  Badge,
-  ScrollArea,
-  Title,
-  Button,
-  NumberInput,
-  Textarea,
-  Slider,
-  Table,
-  Center,
-  Loader,
+  Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon,
 } from '@mantine/core';
-import { DatePicker } from '@mantine/dates';
-import { useForm } from '@mantine/form';
-import { IconAlertCircle, IconDeviceFloppy, IconHistory, IconPlus } from '@tabler/icons-react';
-import { WbsElementDetail, WbsElementType, ActualCost, ProgressUpdate } from '../../types';
-import classes from './ExecutionView.module.css';
+import { MonthPickerInput } from '@mantine/dates';
+import { IconChevronLeft, IconChevronRight, IconAlertCircle } from '@tabler/icons-react';
+import { WbsElementDetail, WbsElementType, PvAllocation, ActualCost, ExecutionData } from '../../types';
 import dayjs from 'dayjs';
+import classes from './ExecutionView.module.css';
 
-// Reusable types
+// --- Types ---
 interface TreeNode extends WbsElementDetail {
   children: TreeNode[];
 }
-
-interface ExecutionViewProps {
+interface ExecutionMap {
+  [wbsElementId: number]: {
+    [date: string]: { pv?: number; ac?: { id: number; value: number } };
+  };
+}
+interface GridProps {
   planVersionId: number | null;
   isReadOnly: boolean;
 }
+// --- Helper Functions ---
+const getBadgeColor = (type: WbsElementType) => ({ Project: 'blue', WorkPackage: 'cyan', Activity: 'teal' }[type] || 'gray');
 
-// --- WBS Tree Component (re-used logic) ---
-
-const WbsTree = ({
-  nodes,
-  onSelectActivity,
-  selectedId,
-}: {
-  nodes: TreeNode[];
-  onSelectActivity: (element: WbsElementDetail) => void;
-  selectedId: number | null;
+// --- Sub-components ---
+const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, onKeyDown, onPaste }: {
+  wbsElementId: number; date: string; pv?: number; initialAc?: number; isReadOnly: boolean;
+  onCommit: (value: number | null) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
 }) => {
-  const getBadgeColor = (type: WbsElementType) => ({ Project: 'blue', WorkPackage: 'cyan', Activity: 'teal' }[type] || 'gray');
+  const [value, setValue] = useState<string | number>(initialAc ?? '');
+  useEffect(() => { setValue(initialAc ?? ''); }, [initialAc]);
 
-  const renderNode = (node: TreeNode, level: number) => (
-    <Stack key={node.id} gap={0}>
-      <NavLink
-        label={node.title}
-        leftSection={<Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge>}
-        style={{ paddingLeft: level * 20 + 12 }}
-        onClick={() => { if (node.elementType === 'Activity') onSelectActivity(node) }}
-        disabled={node.elementType !== 'Activity'}
-        active={node.id === selectedId}
+  const handleBlur = () => {
+    const numericValue = value === '' ? null : Number(value);
+    const initialNumericValue = initialAc ?? null;
+    if (numericValue !== initialNumericValue) onCommit(numericValue);
+  };
+
+  return (
+    <Box className={classes.ac_cell_wrapper}>
+      {pv && <Text size="xs" c="dimmed" ta="center">P: {pv.toFixed(1)}</Text>}
+      <NumberInput
+        id={`cell-ac-${wbsElementId}-${date}`}
+        classNames={{ input: classes.ac_input }}
+        value={value}
+        onChange={setValue}
+        onBlur={handleBlur}
+        onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
+        onPaste={(e) => onPaste(e, wbsElementId, date)}
+        step={0.1} min={0} hideControls
+        readOnly={isReadOnly}
+        variant="unstyled"
       />
-      {node.children.map(child => renderNode(child, level + 1))}
-    </Stack>
+    </Box>
   );
-
-  return <>{nodes.map(node => renderNode(node, 0))}</>;
 };
 
+const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly, onCellKeyDown, onCellPaste }: {
+  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[];
+  onAcChange: (wbsElementId: number, date: string, value: number | null, shouldRefetch?: boolean) => void;
+  isReadOnly: boolean;
+  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+}) => {
+  const descendantIds = useMemo(() => {
+    const getIds = (n: TreeNode): number[] => [n.wbsElementId, ...n.children.flatMap(getIds)];
+    return getIds(node);
+  }, [node]);
 
-// --- Time Tracking Tab ---
+  const activityDescendants = useMemo(() => {
+    return allElements.filter(el => descendantIds.includes(el.wbsElementId) && el.elementType === 'Activity');
+  }, [allElements, descendantIds]);
 
-const TimeTrackingTab = ({ activity }: { activity: WbsElementDetail }) => {
-  const [history, setHistory] = useState<ActualCost[]>([]);
-
-  const fetchHistory = useCallback(async () => {
-    try {
-      const result = await invoke<ActualCost[]>('get_actual_costs_for_element', { wbsElementId: activity.wbsElementId });
-      setHistory(result);
-    } catch (e) {
-      console.error("Failed to fetch actual costs:", e);
-    }
-  }, [activity]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
-
-  const form = useForm({
-    initialValues: { workDate: new Date(), actualCost: 0 },
-    validate: {
-      actualCost: (val) => val <= 0 ? 'Cost must be positive' : null,
-    }
-  });
-
-  const handleSubmit = async (values: typeof form.values) => {
-    try {
-      await invoke('add_actual_cost', {
-        payload: {
-          wbsElementId: activity.wbsElementId,
-          workDate: dayjs(values.workDate).format('YYYY-MM-DD'),
-          actualCost: values.actualCost
-        }
-      });
-      form.reset();
-      fetchHistory();
-    } catch (e) {
-      console.error("Failed to add actual cost:", e);
-    }
+  const getRollupValue = (date: string, type: 'pv' | 'ac'): number => {
+    return activityDescendants.reduce((sum, activity) => {
+      const cellData = data[activity.wbsElementId]?.[date];
+      if (type === 'pv') return sum + (cellData?.pv || 0);
+      if (type === 'ac') return sum + (cellData?.ac?.value || 0);
+      return sum;
+    }, 0);
   };
 
-  const rows = history.map(item => (
-    <Table.Tr key={item.id}>
-      <Table.Td>{item.workDate}</Table.Td>
-      <Table.Td>{item.actualCost}</Table.Td>
-    </Table.Tr>
-  ));
+  const totalPvForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'pv'), 0), [days, data, activityDescendants]);
+  const totalAcForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'ac'), 0), [days, data, activityDescendants]);
 
   return (
-    <div className={classes.wrapper}>
-      <div className={classes.form_section}>
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack>
-            <Title order={4}>Log Time for: {activity.title}</Title>
-            <DatePicker {...form.getInputProps('workDate')} />
-            <NumberInput label="Actual Cost (e.g., hours)" min={0.1} step={0.1} {...form.getInputProps('actualCost')} />
-            <Button type="submit" leftSection={<IconPlus size={16}/>}>Add Entry</Button>
-          </Stack>
-        </form>
-      </div>
-      <Stack style={{ flex: 1 }}>
-        <Title order={4}><IconHistory size={18} /> History</Title>
-        <ScrollArea style={{ flex: 1 }}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Cost</Table.Th></Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>{rows}</Table.Tbody>
-          </Table>
-        </ScrollArea>
-      </Stack>
-    </div>
+    <>
+      <Table.Tr>
+        <Table.Td className={classes.sticky_col}>
+          <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
+        </Table.Td>
+        {days.map((day) => {
+          const dateStr = day.format('YYYY-MM-DD');
+          return (
+            <Table.Td key={dateStr} className={classes.data_cell}>
+              {node.elementType === 'Activity' ? (
+                <AcInputCell
+                  wbsElementId={node.wbsElementId} date={dateStr}
+                  pv={data[node.wbsElementId]?.[dateStr]?.pv}
+                  initialAc={data[node.wbsElementId]?.[dateStr]?.ac?.value}
+                  onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
+                  isReadOnly={isReadOnly}
+                  onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                />
+              ) : (
+                <div className={classes.rollup_cell}>
+                  <Text size="xs" c="dimmed">P: {getRollupValue(dateStr, 'pv') > 0 ? getRollupValue(dateStr, 'pv').toFixed(1) : '-'}</Text>
+                  <Text size="sm" fw={500}>A: {getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : '-'}</Text>
+                </div>
+              )}
+            </Table.Td>
+          );
+        })}
+        <Table.Td className={classes.summary_col}><Text size="xs" c="dimmed">P: {totalPvForMonth.toFixed(1)}</Text><Text size="sm" fw={500}>A: {totalAcForMonth.toFixed(1)}</Text></Table.Td>
+      </Table.Tr>
+      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} onAcChange={onAcChange} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} />)}
+    </>
   );
 };
 
-
-// --- Progress Update Tab ---
-
-const ProgressUpdateTab = ({ activity }: { activity: WbsElementDetail }) => {
-  const [history, setHistory] = useState<ProgressUpdate[]>([]);
-
-  const fetchHistory = useCallback(async () => {
-    try {
-      const result = await invoke<ProgressUpdate[]>('get_progress_updates_for_element', { wbsElementId: activity.wbsElementId });
-      setHistory(result);
-    } catch (e) {
-      console.error("Failed to fetch progress updates:", e);
-    }
-  }, [activity]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
-  
-  const lastProgress = history[0]?.progressPercent ?? 0;
-  
-  const form = useForm({
-    initialValues: { reportDate: new Date(), progressPercent: lastProgress, notes: '' },
-  });
-
-  // Keep form in sync with history
-  useEffect(() => {
-      form.setFieldValue('progressPercent', lastProgress);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastProgress]);
-  
-  const handleSubmit = async (values: typeof form.values) => {
-    try {
-      await invoke('add_progress_update', {
-        payload: {
-          wbsElementId: activity.wbsElementId,
-          reportDate: dayjs(values.reportDate).format('YYYY-MM-DD'),
-          progressPercent: values.progressPercent,
-          notes: values.notes || null,
-        }
-      });
-      form.setFieldValue('notes', ''); // Keep date and progress for next update
-      fetchHistory();
-    } catch (e) {
-      console.error("Failed to add progress update:", e);
-    }
-  };
-
-  const rows = history.map(item => (
-    <Table.Tr key={item.id}>
-      <Table.Td>{item.reportDate}</Table.Td>
-      <Table.Td>{item.progressPercent}%</Table.Td>
-      <Table.Td><Text truncate maw={200}>{item.notes}</Text></Table.Td>
-    </Table.Tr>
-  ));
-
-  return (
-    <div className={classes.wrapper}>
-      <div className={classes.form_section}>
-        <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack>
-            <Title order={4}>Update Progress for: {activity.title}</Title>
-            <DatePicker {...form.getInputProps('reportDate')} />
-            <Textarea label="Notes" placeholder='Optional notes...' {...form.getInputProps('notes')} />
-            <Stack gap={4}>
-                <Text size="sm" fw={500}>Progress: {form.values.progressPercent}%</Text>
-                <Slider min={0} max={100} step={1} {...form.getInputProps('progressPercent')} />
-            </Stack>
-            <Button type="submit" leftSection={<IconDeviceFloppy size={16}/>}>Save Update</Button>
-          </Stack>
-        </form>
-      </div>
-       <Stack style={{ flex: 1 }}>
-        <Title order={4}><IconHistory size={18} /> History</Title>
-        <ScrollArea style={{ flex: 1 }}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Progress</Table.Th><Table.Th>Notes</Table.Th></Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>{rows}</Table.Tbody>
-          </Table>
-        </ScrollArea>
-      </Stack>
-    </div>
-  );
-};
-
-
-// --- Main ExecutionView Component ---
-
-export function ExecutionView({ planVersionId, isReadOnly }: ExecutionViewProps) {
-  const [wbsElements, setWbsElements] = useState<WbsElementDetail[]>([]);
-  const [selectedActivity, setSelectedActivity] = useState<WbsElementDetail | null>(null);
+// --- Main Component ---
+export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [elements, setElements] = useState<WbsElementDetail[]>([]);
+  const [executionData, setExecutionData] = useState<ExecutionMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchWbsElements = useCallback(async () => {
-    if (!planVersionId) {
-      setIsLoading(false);
-      setWbsElements([]);
-      return;
+  const daysInMonth = useMemo(() => {
+    const start = dayjs(currentMonth).startOf('month');
+    const end = dayjs(currentMonth).endOf('month');
+    const days: dayjs.Dayjs[] = [];
+    let current = start;
+    while (current.isBefore(end) || current.isSame(end, 'day')) {
+      days.push(current);
+      current = current.add(1, 'day');
     }
-    setIsLoading(true);
-    setError(null);
-    try {
-        const result = await invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId });
-        setWbsElements(result);
-    } catch (e: any) {
-        console.error("Failed to fetch WBS elements:", e);
-        setError('Failed to load WBS data. Check console for details.');
-        setWbsElements([]);
-    } finally {
-        setIsLoading(false);
-    }
-  }, [planVersionId]);
+    return days;
+  }, [currentMonth]);
 
-  useEffect(() => {
-    fetchWbsElements();
-    setSelectedActivity(null);
-  }, [planVersionId, fetchWbsElements]);
+  const fetchAllData = useCallback(async () => {
+    if (!planVersionId) {
+      setElements([]); setExecutionData({}); return;
+    }
+    setIsLoading(true); setError(null);
+    const start = daysInMonth[0].format('YYYY-MM-DD');
+    const end = daysInMonth[daysInMonth.length - 1].format('YYYY-MM-DD');
+
+    try {
+      const [wbs, data] = await Promise.all([
+        invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId }),
+        invoke<ExecutionData>('get_execution_data', { payload: { planVersionId, startDate: start, endDate: end } }),
+      ]);
+      setElements(wbs);
+
+      const execMap: ExecutionMap = {};
+      const process = (item: PvAllocation | ActualCost, type: 'pv' | 'ac') => {
+        const date = 'startDate' in item ? item.startDate : item.workDate;
+        if (!execMap[item.wbsElementId]) execMap[item.wbsElementId] = {};
+        if (!execMap[item.wbsElementId][date]) execMap[item.wbsElementId][date] = {};
+        if (type === 'pv') execMap[item.wbsElementId][date].pv = (item as PvAllocation).plannedValue;
+        if (type === 'ac') execMap[item.wbsElementId][date].ac = { id: item.id, value: (item as ActualCost).actualCost };
+      };
+      data.pvAllocations.forEach(p => process(p, 'pv'));
+      data.actualCosts.forEach(a => process(a, 'ac'));
+      setExecutionData(execMap);
+    } catch (err: any) {
+      console.error('Failed to fetch data:', err); setError(`Failed to load data. Check console.`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [planVersionId, daysInMonth]);
+
+  useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
   const tree = useMemo(() => {
-    const items = [...wbsElements];
+    const items = [...elements];
     const map: { [key: number]: TreeNode } = {};
     const roots: TreeNode[] = [];
-    items.forEach((item) => {
-      map[item.wbsElementId] = { ...item, children: [] };
-    });
+    items.forEach((item) => { map[item.wbsElementId] = { ...item, children: [] }; });
     items.forEach((item) => {
       const node = map[item.wbsElementId];
-      if (item.parentElementId && map[item.parentElementId]) {
-        map[item.parentElementId].children.push(node);
-      } else {
-        roots.push(node);
-      }
+      if (item.parentElementId && map[item.parentElementId]) { map[item.parentElementId].children.push(node); } else { roots.push(node); }
     });
     return roots;
-  }, [wbsElements]);
+  }, [elements]);
+
+  const { activityRowIds, dateStrs } = useMemo(() => {
+    const activities: WbsElementDetail[] = [];
+    const traverse = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (node.elementType === 'Activity') activities.push(node);
+        if (node.children) traverse(node.children);
+      }
+    };
+    traverse(tree);
+    return {
+      activityRowIds: activities.map(a => a.wbsElementId),
+      dateStrs: daysInMonth.map(d => d.format('YYYY-MM-DD'))
+    };
+  }, [tree, daysInMonth]);
+
+  const handleAcChange = useCallback(async (wbsElementId: number, date: string, value: number | null, shouldRefetch = true) => {
+    if (isReadOnly) return;
+    try {
+      await invoke('upsert_actual_cost', { payload: { wbsElementId, workDate: date, actualCost: value } });
+      if (shouldRefetch) fetchAllData();
+    } catch (error) { console.error('Failed to upsert actual cost:', error); }
+  }, [isReadOnly, fetchAllData]);
   
-  if (isReadOnly) {
-    return (
-      <Alert color="orange" title="Read-only Mode" icon={<IconAlertCircle />}>
-        You are viewing a historical baseline. To record actuals or progress, please select the "Working Draft" from the header.
-      </Alert>
-    );
-  }
+  const focusCell = (wbsElementId: number, date: string) => document.getElementById(`cell-ac-${wbsElementId}-${date}`)?.focus();
 
-  if (!planVersionId) {
-    return <Text c="dimmed" ta="center" pt="xl">Please select a project to start tracking execution.</Text>;
-  }
+  const handleCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
+    const { key } = e;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
+    e.preventDefault();
+    const rIdx = activityRowIds.indexOf(wbsElementId), cIdx = dateStrs.indexOf(date);
+    if (key === 'ArrowUp' && rIdx > 0) focusCell(activityRowIds[rIdx - 1], date);
+    else if (key === 'ArrowDown' && rIdx < activityRowIds.length - 1) focusCell(activityRowIds[rIdx + 1], date);
+    else if (key === 'ArrowLeft' && cIdx > 0) focusCell(wbsElementId, dateStrs[cIdx - 1]);
+    else if (key === 'ArrowRight' && cIdx < dateStrs.length - 1) focusCell(wbsElementId, dateStrs[cIdx + 1]);
+    else if (key === 'Delete' || key === 'Backspace') handleAcChange(wbsElementId, date, null);
+  }, [activityRowIds, dateStrs, handleAcChange]);
 
-  if (isLoading) {
-    return <Center style={{ height: '100%' }}><Loader /></Center>;
-  }
+  const handleCellPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startDate: string) => {
+    e.preventDefault(); if (isReadOnly) return;
+    const pasteData = e.clipboardData.getData('text');
+    const rows = pasteData.split(/\r\n|\n|\r/);
+    const startRIdx = activityRowIds.indexOf(startWbsId), startCIdx = dateStrs.indexOf(startDate);
+    if (startRIdx === -1 || startCIdx === -1) return;
 
-  if (error) {
-    return <Alert color="red" title="Error" icon={<IconAlertCircle />}>{error}</Alert>;
-  }
+    const updates = rows.flatMap((row, i) => {
+      const rIdx = startRIdx + i;
+      if (rIdx >= activityRowIds.length) return [];
+      const wbsId = activityRowIds[rIdx];
+      return row.split('\t').map((val, j) => {
+        const cIdx = startCIdx + j;
+        if (cIdx >= dateStrs.length) return null;
+        const date = dateStrs[cIdx];
+        const value = !isNaN(parseFloat(val)) ? parseFloat(val) : null;
+        return handleAcChange(wbsId, date, value, false);
+      });
+    }).filter(p => p !== null);
+    
+    await Promise.all(updates);
+    fetchAllData();
+  }, [activityRowIds, dateStrs, isReadOnly, handleAcChange, fetchAllData]);
+
+  const changeMonth = (amount: number) => setCurrentMonth(dayjs(currentMonth).add(amount, 'month').toDate());
+
+  if (isReadOnly) return <Alert color="orange" title="Read-only Mode" icon={<IconAlertCircle />}>You are viewing a historical baseline. To record actuals or progress, please select the "Working Draft" from the header.</Alert>;
+  if (!planVersionId) return <Text c="dimmed" ta="center" pt="xl">Please select a project to start tracking execution.</Text>;
 
   return (
-    <div className={classes.wrapper}>
-      <div className={classes.tree_container}>
-        <Text size="sm" fw={700} c="dimmed" mb="xs">SELECT AN ACTIVITY</Text>
-        <ScrollArea h="100%">
-            <WbsTree nodes={tree} onSelectActivity={setSelectedActivity} selectedId={selectedActivity?.id || null} />
-        </ScrollArea>
-      </div>
+    <Stack h="100%">
+      <Group justify="space-between">
+        <Title order={2}>Execution Tracking (PV / AC)</Title>
+        <Group>
+          <ActionIcon onClick={() => changeMonth(-1)} variant="default" aria-label="Previous month"><IconChevronLeft size={16} /></ActionIcon>
+          <MonthPickerInput value={currentMonth} onChange={(date) => date && setCurrentMonth(new Date(date))} style={{ width: 150 }} />
+          <ActionIcon onClick={() => changeMonth(1)} variant="default" aria-label="Next month"><IconChevronRight size={16} /></ActionIcon>
+        </Group>
+      </Group>
 
-      <div className={classes.details_container}>
-        {!selectedActivity ? (
-            <Center style={{flex: 1}}><Text c="dimmed">Select an activity from the left to track time or progress.</Text></Center>
-        ) : (
-            <Tabs defaultValue="time">
-                <Tabs.List>
-                    <Tabs.Tab value="time">Time Tracking (AC)</Tabs.Tab>
-                    <Tabs.Tab value="progress">Progress Update (EV)</Tabs.Tab>
-                </Tabs.List>
+      {isLoading && <Center style={{ flex: 1 }}><Loader /></Center>}
+      {error && <Alert title="Error" color="red" icon={<IconAlertCircle />}>{error}</Alert>}
 
-                <Tabs.Panel value="time" pt="md"><TimeTrackingTab activity={selectedActivity} /></Tabs.Panel>
-                <Tabs.Panel value="progress" pt="md"><ProgressUpdateTab activity={selectedActivity} /></Tabs.Panel>
-            </Tabs>
-        )}
-      </div>
-    </div>
+      {!isLoading && !error && (
+        <Box className={classes.table_container}>
+          <Table className={classes.table} withColumnBorders>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th className={classes.sticky_col_header}>WBS Element</Table.Th>
+                {daysInMonth.map((day) => {
+                  const isWeekend = day.day() === 0 || day.day() === 6;
+                  return (
+                    <Table.Th key={day.format('YYYY-MM-DD')} className={`${classes.day_header} ${isWeekend ? classes.day_header_weekend : ''}`}>
+                      <div>{day.format('ddd')}</div><div>{day.format('D')}</div>
+                    </Table.Th>
+                  );
+                })}
+                <Table.Th>Month Totals</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {tree.map(node => <GridRow key={node.id} node={node} level={0} days={daysInMonth} data={executionData} allElements={elements} onAcChange={handleAcChange} isReadOnly={isReadOnly} onCellKeyDown={handleCellKeyDown} onCellPaste={handleCellPaste} />)}
+            </Table.Tbody>
+          </Table>
+        </Box>
+      )}
+    </Stack>
   );
 }

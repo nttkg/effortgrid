@@ -98,6 +98,14 @@ pub struct UpsertDailyAllocationPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpsertActualCostPayload {
+    wbs_element_id: i64,
+    work_date: NaiveDate,
+    actual_cost: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateBaselinePayload {
     portfolio_id: i64,
     baseline_name: String,
@@ -132,6 +140,21 @@ pub struct GetEvmKpisPayload {
 pub struct GetSCurveDataPayload {
     filter: evm::EvmFilter,
     granularity: evm::Granularity,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetExecutionDataPayload {
+    plan_version_id: i64,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionDataResult {
+    pv_allocations: Vec<PvAllocation>,
+    actual_costs: Vec<ActualCost>,
 }
 
 
@@ -386,6 +409,25 @@ pub async fn add_actual_cost(
 }
 
 #[tauri::command]
+pub async fn upsert_actual_cost(
+    pool: State<'_, SqlitePool>,
+    payload: UpsertActualCostPayload,
+) -> AppResult<()> {
+    check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
+    // For now, hardcode user_id as 1. User management is out of scope.
+    let user_id = 1;
+    db::upsert_actual_cost(
+        &pool,
+        payload.wbs_element_id,
+        user_id,
+        payload.work_date,
+        payload.actual_cost,
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_actual_costs_for_element(
     pool: State<'_, SqlitePool>,
     wbs_element_id: i64,
@@ -439,6 +481,29 @@ pub async fn get_s_curve_data(
 ) -> AppResult<Vec<evm::SCurveDataPoint>> {
     let data = evm::calculate_s_curve_data(&pool, &payload.filter, payload.granularity).await?;
     Ok(data)
+}
+
+#[tauri::command]
+pub async fn get_execution_data(
+    pool: State<'_, SqlitePool>,
+    payload: GetExecutionDataPayload,
+) -> AppResult<ExecutionDataResult> {
+    let pv_allocations = db::list_allocations_for_period(
+        &pool,
+        payload.plan_version_id,
+        payload.start_date,
+        payload.end_date,
+    )
+    .await?;
+
+    let actual_costs =
+        db::list_actuals_for_period(&pool, payload.plan_version_id, payload.start_date, payload.end_date)
+            .await?;
+
+    Ok(ExecutionDataResult {
+        pv_allocations,
+        actual_costs,
+    })
 }
 
 #[tauri::command]

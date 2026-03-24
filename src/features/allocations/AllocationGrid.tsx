@@ -50,13 +50,21 @@ const getBadgeColor = (type: WbsElementType) => {
 
 // A stateful component to manage each editable cell, fixing issues with defaultValue.
 const PvInputCell = ({
+  wbsElementId,
+  date,
   initialValue,
   onCommit,
   isReadOnly,
+  onKeyDown,
+  onPaste,
 }: {
+  wbsElementId: number;
+  date: string;
   initialValue?: number;
   onCommit: (value: number | null) => void;
   isReadOnly: boolean;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
 }) => {
   const [value, setValue] = useState<string | number>(initialValue ?? '');
 
@@ -74,14 +82,18 @@ const PvInputCell = ({
 
   return (
     <NumberInput
+      id={`cell-pv-${wbsElementId}-${date}`}
       classNames={{ input: classes.pv_input }}
       value={value}
       onChange={setValue}
       onBlur={handleBlur}
+      onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
+      onPaste={(e) => onPaste(e, wbsElementId, date)}
       step={0.1}
       min={0}
       hideControls
       readOnly={isReadOnly}
+      variant="unstyled"
     />
   );
 };
@@ -94,14 +106,18 @@ const GridRow = ({
   allElements,
   onPvChange,
   isReadOnly,
+  onCellKeyDown,
+  onCellPaste,
 }: {
   node: TreeNode;
   level: number;
   days: dayjs.Dayjs[];
   allocations: AllocationMap;
   allElements: WbsElementDetail[];
-  onPvChange: (wbsElementId: number, date: string, value: number | null) => void;
+  onPvChange: (wbsElementId: number, date: string, value: number | null, shouldRefetch?: boolean) => void;
   isReadOnly: boolean;
+  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
 }) => {
   // Memoize descendant IDs to avoid recalculating on every render
   const descendantIds = useMemo(() => {
@@ -148,9 +164,13 @@ const GridRow = ({
             <Table.Td key={dateStr}>
               {node.elementType === 'Activity' ? (
                 <PvInputCell
+                  wbsElementId={node.wbsElementId}
+                  date={dateStr}
                   initialValue={allocations[node.wbsElementId]?.[dateStr]?.pv}
                   onCommit={(value) => onPvChange(node.wbsElementId, dateStr, value)}
                   isReadOnly={isReadOnly}
+                  onKeyDown={onCellKeyDown}
+                  onPaste={onCellPaste}
                 />
               ) : (
                 <div className={classes.rollup_cell}>
@@ -173,6 +193,8 @@ const GridRow = ({
           allElements={allElements}
           onPvChange={onPvChange}
           isReadOnly={isReadOnly}
+          onCellKeyDown={onCellKeyDown}
+          onCellPaste={onCellPaste}
         />
       ))}
     </>
@@ -258,8 +280,31 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     return roots;
   }, [elements]);
 
+  const { activityRowIds, dateStrs } = useMemo(() => {
+    const activities: WbsElementDetail[] = [];
+    const traverse = (nodes: TreeNode[]) => {
+        for (const node of nodes) {
+            if (node.elementType === 'Activity') {
+                activities.push(node);
+            }
+            if (node.children) {
+                traverse(node.children);
+            }
+        }
+    };
+    traverse(tree);
+    const ids = activities.map(a => a.wbsElementId);
+    const dates = daysInMonth.map(d => d.format('YYYY-MM-DD'));
+    return { activityRowIds: ids, dateStrs: dates };
+  }, [tree, daysInMonth]);
+
+  const focusCell = (wbsElementId: number, date: string) => {
+    const cell = document.getElementById(`cell-pv-${wbsElementId}-${date}`);
+    cell?.focus();
+  };
+
   const handlePvChange = useCallback(
-    async (wbsElementId: number, date: string, value: number | null) => {
+    async (wbsElementId: number, date: string, value: number | null, shouldRefetch = true) => {
       if (!planVersionId) return;
       try {
         await invoke('upsert_daily_allocation', {
@@ -270,15 +315,83 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
             plannedValue: value,
           },
         });
-        // Note: We refetch all data for simplicity. For better performance,
-        // we could update the local `allocations` state optimistically.
-        fetchAllData();
+        if (shouldRefetch) {
+          // Note: We refetch all data for simplicity. For better performance,
+          // we could update the local `allocations` state optimistically.
+          fetchAllData();
+        }
       } catch (error) {
         console.error('Failed to upsert allocation:', error);
         // Optionally, show an error notification to the user
       }
     },
     [planVersionId, fetchAllData]
+  );
+
+  const handleCellKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
+      const { key } = e;
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) {
+        return;
+      }
+      e.preventDefault();
+
+      const rowIndex = activityRowIds.indexOf(wbsElementId);
+      const colIndex = dateStrs.indexOf(date);
+
+      if (key === 'ArrowUp' && rowIndex > 0) {
+        focusCell(activityRowIds[rowIndex - 1], date);
+      } else if (key === 'ArrowDown' && rowIndex < activityRowIds.length - 1) {
+        focusCell(activityRowIds[rowIndex + 1], date);
+      } else if (key === 'ArrowLeft' && colIndex > 0) {
+        focusCell(wbsElementId, dateStrs[colIndex - 1]);
+      } else if (key === 'ArrowRight' && colIndex < dateStrs.length - 1) {
+        focusCell(wbsElementId, dateStrs[colIndex + 1]);
+      } else if (key === 'Delete' || key === 'Backspace') {
+        handlePvChange(wbsElementId, date, null);
+      }
+    },
+    [activityRowIds, dateStrs, handlePvChange]
+  );
+
+  const handleCellPaste = useCallback(
+    async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startDate: string) => {
+        e.preventDefault();
+        if (isReadOnly) return;
+
+        const pasteData = e.clipboardData.getData('text');
+        const rows = pasteData.split(/\r\n|\n|\r/);
+
+        const startRowIndex = activityRowIds.indexOf(startWbsId);
+        const startColIndex = dateStrs.indexOf(startDate);
+
+        if (startRowIndex === -1 || startColIndex === -1) return;
+
+        const updates: Promise<void>[] = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const rowData = rows[i].split('\t');
+            const currentRowIndex = startRowIndex + i;
+
+            if (currentRowIndex >= activityRowIds.length) break;
+            const currentWbsId = activityRowIds[currentRowIndex];
+
+            for (let j = 0; j < rowData.length; j++) {
+                const currentColIndex = startColIndex + j;
+                if (currentColIndex >= dateStrs.length) break;
+
+                const currentDate = dateStrs[currentColIndex];
+                const valueStr = rowData[j].trim();
+                const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
+                
+                updates.push(handlePvChange(currentWbsId, currentDate, value, false));
+            }
+        }
+        
+        await Promise.all(updates);
+        fetchAllData();
+    },
+    [activityRowIds, dateStrs, isReadOnly, handlePvChange, fetchAllData]
   );
   
   const changeMonth = (amount: number) => {
@@ -338,6 +451,8 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                       allElements={elements}
                       onPvChange={handlePvChange}
                       isReadOnly={isReadOnly}
+                      onCellKeyDown={handleCellKeyDown}
+                      onCellPaste={handleCellPaste}
                   />
               ))}
             </Table.Tbody>

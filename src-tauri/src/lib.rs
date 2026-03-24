@@ -37,11 +37,13 @@ pub fn run() {
             commands::upsert_daily_allocation,
             commands::create_baseline,
             commands::add_actual_cost,
+            commands::upsert_actual_cost,
             commands::get_actual_costs_for_element,
             commands::add_progress_update,
             commands::get_progress_updates_for_element,
             commands::get_evm_kpis,
             commands::get_s_curve_data,
+            commands::get_execution_data,
             commands::get_filterable_wbs_nodes
         ])
         .run(tauri::generate_context!())
