@@ -15,6 +15,8 @@ import {
   Tooltip as MantineTooltip,
   Select,
   SimpleGrid,
+  MultiSelect,
+  Collapse,
 } from '@mantine/core';
 import {
   ResponsiveContainer,
