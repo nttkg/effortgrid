@@ -1,6 +1,6 @@
-use chrono::NaiveDate;
-use serde::Serialize;
-use sqlx::{FromRow, SqlitePool};
+use serde::{Deserialize, Serialize};
+pub use sqlx::SqlitePool;
+use sqlx::FromRow;
 use thiserror::Error;
 
 // アプリケーションのローカルファイルとしてデータベースを永続化します。
@@ -32,7 +32,7 @@ pub async fn init_db() -> DbResult<SqlitePool> {
 
 // ----- Model Structs -----
 
-#[derive(Debug, Clone, Serialize, sqlx::Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "TEXT")]
 #[serde(rename_all = "PascalCase")]
 pub enum WbsElementType {
