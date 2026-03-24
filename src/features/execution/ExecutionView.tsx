@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon, Menu, Avatar, Tooltip, rem,
@@ -62,8 +62,8 @@ const AcInputCell = ({ wbsElementId, userId, date, initialAc, onCommit, isReadOn
       value={value}
       onChange={setValue}
       onBlur={handleBlur}
-      onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
-      onPaste={(e) => onPaste(e, wbsElementId, date)}
+      onKeyDown={(e) => onKeyDown(e, wbsElementId, userId, date)}
+      onPaste={(e) => onPaste(e, wbsElementId, userId, date)}
       onMouseDown={onMouseDown}
       onMouseOver={onMouseOver}
       step={0.1} min={0} hideControls
@@ -73,138 +73,155 @@ const AcInputCell = ({ wbsElementId, userId, date, initialAc, onCommit, isReadOn
   );
 };
 
-const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly, onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells }: {
-  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[];
-  onAcChange: (wbsElementId: number, date: string, value: number | null, shouldRefetch?: boolean) => void;
+const GridRow = ({ 
+    node, level, days, data, allElements, users, assignedUsers,
+    onAcChange, isReadOnly, onAddUser,
+    onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells 
+}: {
+  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[]; users: User[];
+  assignedUsers: Set<number>;
+  onAcChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
   isReadOnly: boolean;
-  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
-  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
-  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
-  onCellMouseOver: (wbsElementId: number, date: string) => void;
+  onAddUser: (wbsElementId: number, userId: number) => void;
+  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
+  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
+  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
+  onCellMouseOver: (wbsElementId: number, userId: number, date: string) => void;
   selectedCells: Set<string>;
 }) => {
-  const descendantIds = useMemo(() => {
-    const getIds = (n: TreeNode): number[] => [n.wbsElementId, ...n.children.flatMap(getIds)];
-    return getIds(node);
-  }, [node]);
-
-  const activityDescendants = useMemo(() => {
-    return allElements.filter(el => descendantIds.includes(el.wbsElementId) && el.elementType === 'Activity');
-  }, [allElements, descendantIds]);
+  const isActivity = node.elementType === 'Activity';
+  const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
   const getRollupValue = (date: string, type: 'pv' | 'ac'): number => {
+    const getIds = (n: TreeNode): number[] => [n.wbsElementId, ...n.children.flatMap(getIds)];
+    const descendantIds = getIds(node);
+    const activityDescendants = allElements.filter(el => descendantIds.includes(el.wbsElementId) && el.elementType === 'Activity');
+    
     return activityDescendants.reduce((sum, activity) => {
-      const cellData = data[activity.wbsElementId]?.[date];
-      if (type === 'pv') return sum + (cellData?.pv || 0);
-      if (type === 'ac') return sum + (cellData?.ac?.value || 0);
-      return sum;
+      const activityData = data[activity.wbsElementId];
+      if (!activityData) return sum;
+      return sum + Object.values(activityData).reduce((userSum, userEntries) => {
+        const cellData = userEntries[date];
+        if (!cellData) return userSum;
+        if (type === 'pv') return userSum + (cellData.pv || 0);
+        if (type === 'ac') return userSum + (cellData.ac?.value || 0);
+        return userSum;
+      }, 0);
     }, 0);
   };
 
-  const totalPvForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'pv'), 0), [days, data, activityDescendants]);
-  const totalAcForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'ac'), 0), [days, data, activityDescendants]);
+  const totalForMonth = (type: 'pv' | 'ac') => {
+    return days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), type), 0);
+  };
 
-  const isActivity = node.elementType === 'Activity';
-  const isWorkPackage = node.elementType === 'WorkPackage';
+  const totalForUserMonth = (userId: number, type: 'pv' | 'ac') => {
+    if (!isActivity) return 0;
+    const userEntries = data[node.wbsElementId]?.[userId];
+    if (!userEntries) return 0;
+    return days.reduce((total, day) => {
+      const dateStr = day.format('YYYY-MM-DD');
+      const cell = userEntries[dateStr];
+      if (!cell) return total;
+      if (type === 'pv') return total + (cell.pv || 0);
+      if (type === 'ac') return total + (cell.ac?.value || 0);
+      return total;
+    }, 0);
+  };
 
-  if (isActivity || isWorkPackage) {
-    const totalPv = useMemo(() => {
-      if (isActivity) {
-        return days.reduce((total, day) => {
-            const dateStr = day.format('YYYY-MM-DD');
-            return total + (data[node.wbsElementId]?.[dateStr]?.pv || 0);
-        }, 0);
-      }
-      return totalPvForMonth;
-    }, [days, data, node.wbsElementId, isActivity, totalPvForMonth]);
+  const usersToRender = useMemo(() => Array.from(assignedUsers).sort((a, b) => a - b), [assignedUsers]);
+  const availableUsers = useMemo(() => users.filter(u => !assignedUsers.has(u.id)), [users, assignedUsers]);
 
-    const totalAc = useMemo(() => {
-      if (isActivity) {
-          return days.reduce((total, day) => {
-              const dateStr = day.format('YYYY-MM-DD');
-              return total + (data[node.wbsElementId]?.[dateStr]?.ac?.value || 0);
-          }, 0);
-      }
-      return totalAcForMonth;
-    }, [days, data, node.wbsElementId, isActivity, totalAcForMonth]);
-
-    return (
-      <>
-        {/* PV Row */}
-        <Table.Tr>
-          <Table.Td rowSpan={2} className={classes.sticky_col} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
-            <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
-          </Table.Td>
-          {days.map((day) => {
-            const dateStr = day.format('YYYY-MM-DD');
-            const pvValue = isActivity ? data[node.wbsElementId]?.[dateStr]?.pv : getRollupValue(dateStr, 'pv');
-            return (
-              <Table.Td key={`${dateStr}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                <Text size="sm" c="dimmed">{pvValue != null && pvValue > 0 ? pvValue.toFixed(1) : ''}</Text>
-              </Table.Td>
-            );
-          })}
-          <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-            <Text size="sm" c="dimmed">{totalPv > 0 ? totalPv.toFixed(1) : ''}</Text>
-          </Table.Td>
-        </Table.Tr>
-        {/* AC Row */}
-        <Table.Tr>
-          {days.map((day) => {
-            const dateStr = day.format('YYYY-MM-DD');
-            const cellId = `cell-ac-${node.wbsElementId}-${dateStr}`;
-            return (
-              <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: isActivity ? 0 : 'var(--table-td-padding)', borderTop: 'none', textAlign: 'right', verticalAlign: 'middle' }}>
-                {isActivity ? (
-                  <AcInputCell
-                    wbsElementId={node.wbsElementId} date={dateStr}
-                    initialAc={data[node.wbsElementId]?.[dateStr]?.ac?.value}
-                    onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
-                    isReadOnly={isReadOnly}
-                    onKeyDown={onCellKeyDown} onPaste={onCellPaste}
-                    onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, dateStr)}
-                    onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
-                    isSelected={selectedCells.has(cellId)}
-                  />
-                ) : (
-                  <Text size="sm" fw={500}>{getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : ''}</Text>
-                )}
-              </Table.Td>
-            );
-          })}
-          <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
-            <Text size="sm" fw={500}>{totalAc > 0 ? totalAc.toFixed(1) : ''}</Text>
-          </Table.Td>
-        </Table.Tr>
-        {isWorkPackage && node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} onAcChange={onAcChange} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
-      </>
-    );
-  }
-
-  // Project Row
   return (
     <>
+      {/* Activity / Project / WorkPackage Row */}
       <Table.Tr>
-        <Table.Td className={classes.sticky_col}>
-          <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
+        <Table.Td className={classes.sticky_col} style={{ borderBottom: isActivity && usersToRender.length > 0 ? 'none' : undefined }}>
+          <Group gap="xs" style={{ paddingLeft: level * 20 }}>
+            {isActivity && (
+              <Menu shadow="md" width={200}>
+                <Menu.Target><Tooltip label="Add person"><ActionIcon variant="subtle" size="sm"><IconPlus size={14} /></ActionIcon></Tooltip></Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Label>Assign a person</Menu.Label>
+                  {availableUsers.map(user => (
+                    <Menu.Item key={user.id} leftSection={<Avatar size="sm">{user.name.substring(0, 2)}</Avatar>} onClick={() => onAddUser(node.wbsElementId, user.id)}>
+                      {user.name}
+                    </Menu.Item>
+                  ))}
+                  {availableUsers.length === 0 && <Menu.Item disabled>No one else to assign</Menu.Item>}
+                </Menu.Dropdown>
+              </Menu>
+            )}
+            <Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge>
+            <Text size="sm" truncate>{node.title}</Text>
+          </Group>
         </Table.Td>
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
           return (
-            <Table.Td key={dateStr} className={classes.data_cell}>
-                <div className={classes.rollup_cell}>
-                  <Text size="xs" c="dimmed">PV: {getRollupValue(dateStr, 'pv') > 0 ? getRollupValue(dateStr, 'pv').toFixed(1) : '-'}</Text>
-                  <Text size="sm" fw={500}>AC: {getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : '-'}</Text>
-                </div>
+            <Table.Td key={dateStr} className={classes.data_cell} style={{ borderBottom: isActivity && usersToRender.length > 0 ? 'none' : undefined }}>
+              <div className={classes.rollup_cell}>
+                <Text size="xs" c="dimmed">PV: {getRollupValue(dateStr, 'pv') > 0 ? getRollupValue(dateStr, 'pv').toFixed(1) : '-'}</Text>
+                <Text size="sm" fw={500}>AC: {getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : '-'}</Text>
+              </div>
             </Table.Td>
           );
         })}
-        <Table.Td className={classes.summary_col}>
-          <Text size="xs" c="dimmed">PV: {totalPvForMonth.toFixed(1)}</Text>
-          <Text size="sm" fw={500}>AC: {totalAcForMonth.toFixed(1)}</Text>
+        <Table.Td className={classes.summary_col} style={{ borderBottom: isActivity && usersToRender.length > 0 ? 'none' : undefined }}>
+          <Text size="xs" c="dimmed">PV: {totalForMonth('pv').toFixed(1)}</Text>
+          <Text size="sm" fw={500}>AC: {totalForMonth('ac').toFixed(1)}</Text>
         </Table.Td>
       </Table.Tr>
-      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} onAcChange={onAcChange} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
+
+      {/* User Rows */}
+      {isActivity && usersToRender.map((userId, index) => {
+        const user = userMap.get(userId);
+        const isLastUser = index === usersToRender.length - 1;
+        return (
+          <React.Fragment key={userId}>
+            {/* User PV Row */}
+            <Table.Tr>
+              <Table.Td rowSpan={2} className={classes.sticky_col} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+                <Group gap="xs" style={{ paddingLeft: (level * 20) + 30 }}><Avatar size="sm">{user?.name.substring(0,2)}</Avatar><Text size="xs">{user?.name}</Text></Group>
+              </Table.Td>
+              {days.map(day => (
+                <Table.Td key={`${day.format()}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                  <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[userId]?.[day.format('YYYY-MM-DD')]?.pv?.toFixed(1) || ''}</Text>
+                </Table.Td>
+              ))}
+              <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                <Text size="sm" c="dimmed">{totalForUserMonth(userId, 'pv') > 0 ? totalForUserMonth(userId, 'pv').toFixed(1) : ''}</Text>
+              </Table.Td>
+            </Table.Tr>
+            {/* User AC Row */}
+            <Table.Tr>
+              {days.map(day => {
+                const dateStr = day.format('YYYY-MM-DD');
+                const cellId = `cell-ac-${node.wbsElementId}-${userId}-${dateStr}`;
+                return (
+                  <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: 0, borderTop: 'none', textAlign: 'right', verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+                    <AcInputCell
+                      wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
+                      initialAc={data[node.wbsElementId]?.[userId]?.[dateStr]?.ac?.value}
+                      onCommit={(value) => onAcChange(node.wbsElementId, userId, dateStr, value)}
+                      isReadOnly={isReadOnly}
+                      onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                      onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, userId, dateStr)}
+                      onMouseOver={() => onCellMouseOver(node.wbsElementId, userId, dateStr)}
+                      isSelected={selectedCells.has(cellId)}
+                    />
+                  </Table.Td>
+                );
+              })}
+              <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+                <Text size="sm" fw={500}>{totalForUserMonth(userId, 'ac') > 0 ? totalForUserMonth(userId, 'ac').toFixed(1) : ''}</Text>
+              </Table.Td>
+            </Table.Tr>
+          </React.Fragment>
+        )
+      })}
+
+      {/* Child WBS Element Rows */}
+      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} users={users} assignedUsers={assignedUsers[child.wbsElementId] || new Set()} onAcChange={onAcChange} onAddUser={onAddUser} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
     </>
   );
 };
@@ -336,31 +353,66 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     };
   }, [tree, daysInMonth, assignedUsers]);
 
-  const handleAcChange = useCallback(async (wbsElementId: number, date: string, value: number | null, shouldRefetch = true) => {
+  const handleAcChange = useCallback(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
     if (isReadOnly) return;
+
+    setExecutionData(prev => {
+        const newData = JSON.parse(JSON.stringify(prev));
+        const ensurePath = (wbsId: number, uId: number, d: string) => {
+            if (!newData[wbsId]) newData[wbsId] = {};
+            if (!newData[wbsId][uId]) newData[wbsId][uId] = {};
+            if (!newData[wbsId][uId][d]) newData[wbsId][uId][d] = {};
+        };
+        ensurePath(wbsElementId, userId, date);
+
+        if (value !== null && value > 0) {
+            newData[wbsElementId][userId][date].ac = { id: prev[wbsElementId]?.[userId]?.[date]?.ac?.id || -1, value };
+        } else {
+            if(newData[wbsElementId]?.[userId]?.[date]?.ac) {
+                delete newData[wbsElementId][userId][date].ac;
+            }
+        }
+        return newData;
+    });
+
     try {
-      await invoke('upsert_actual_cost', { payload: { wbsElementId, workDate: date, actualCost: value } });
-      if (shouldRefetch) fetchAllData();
-    } catch (error) { console.error('Failed to upsert actual cost:', error); }
+      // NOTE: Unlike PV, AC user_id is NOT optional. We assume a valid user is assigned.
+      await invoke('upsert_actual_cost', { payload: { wbsElementId, userId, workDate: date, actualCost: value } });
+    } catch (error) { 
+        console.error('Failed to upsert actual cost:', error); 
+        fetchAllData(); // revert on error
+    }
   }, [isReadOnly, fetchAllData]);
   
-  const focusCell = (wbsElementId: number, date: string) => document.getElementById(`cell-ac-${wbsElementId}-${date}`)?.focus();
+  const focusCell = (wbsElementId: number, userId: number, date: string) => document.getElementById(`cell-ac-${wbsElementId}-${userId}-${date}`)?.focus();
 
-  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
+  const handleAddUserToActivity = (wbsElementId: number, userId: number) => {
+    setAssignedUsers(prev => {
+      const newAssigned = { ...prev };
+      if (!newAssigned[wbsElementId]) {
+        newAssigned[wbsElementId] = new Set();
+      }
+      newAssigned[wbsElementId].add(userId);
+      return newAssigned;
+    });
+  };
+
+  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => {
     e.preventDefault();
     e.currentTarget.focus();
     setIsSelecting(true);
-    const cellId = `cell-ac-${wbsElementId}-${date}`;
-    
+    const cellId = `cell-ac-${wbsElementId}-${userId}-${date}`;
+    const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
+
     if (e.shiftKey && selectionAnchor) {
-        // Range selection
         const startIdParts = selectionAnchor.split('-');
         const startWbsId = Number(startIdParts[2]);
-        const startDate = startIdParts.slice(3).join('-');
+        const startUserId = Number(startIdParts[3]);
+        const startDate = startIdParts.slice(4).join('-');
 
-        const startRow = activityRowIds.indexOf(startWbsId);
+        const startRow = findRowIndex(startWbsId, startUserId);
         const startCol = dateStrs.indexOf(startDate);
-        const endRow = activityRowIds.indexOf(wbsElementId);
+        const endRow = findRowIndex(wbsElementId, userId);
         const endCol = dateStrs.indexOf(date);
 
         if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
@@ -376,9 +428,8 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
         for (let r = minRow; r <= maxRow; r++) {
             for (let c = minCol; c <= maxCol; c++) {
-                const cellWbsId = activityRowIds[r];
-                const cellDate = dateStrs[c];
-                newSelectedCells.add(`cell-ac-${cellWbsId}-${cellDate}`);
+                const rowInfo = activityRowIds[r];
+                newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${dateStrs[c]}`);
             }
         }
         setSelectedCells(newSelectedCells);
@@ -388,16 +439,18 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     }
   };
 
-  const handleCellMouseOver = (wbsElementId: number, date: string) => {
+  const handleCellMouseOver = (wbsElementId: number, userId: number, date: string) => {
     if (!isSelecting || !selectionAnchor) return;
     
+    const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
     const startIdParts = selectionAnchor.split('-');
     const startWbsId = Number(startIdParts[2]);
-    const startDate = startIdParts.slice(3).join('-');
+    const startUserId = Number(startIdParts[3]);
+    const startDate = startIdParts.slice(4).join('-');
 
-    const startRow = activityRowIds.indexOf(startWbsId);
+    const startRow = findRowIndex(startWbsId, startUserId);
     const startCol = dateStrs.indexOf(startDate);
-    const endRow = activityRowIds.indexOf(wbsElementId);
+    const endRow = findRowIndex(wbsElementId, userId);
     const endCol = dateStrs.indexOf(date);
 
     if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) return;
@@ -410,119 +463,160 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
     for (let r = minRow; r <= maxRow; r++) {
         for (let c = minCol; c <= maxCol; c++) {
-            const cellWbsId = activityRowIds[r];
-            const cellDate = dateStrs[c];
-            newSelectedCells.add(`cell-ac-${cellWbsId}-${cellDate}`);
+            const rowInfo = activityRowIds[r];
+            newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${dateStrs[c]}`);
         }
     }
     setSelectedCells(newSelectedCells);
   };
 
-  const handleCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
+  const handleCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => {
     const { key } = e;
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
     e.preventDefault();
-    const rIdx = activityRowIds.indexOf(wbsElementId), cIdx = dateStrs.indexOf(date);
-    if (key === 'ArrowUp' && rIdx > 0) focusCell(activityRowIds[rIdx - 1], date);
-    else if (key === 'ArrowDown' && rIdx < activityRowIds.length - 1) focusCell(activityRowIds[rIdx + 1], date);
-    else if (key === 'ArrowLeft' && cIdx > 0) focusCell(wbsElementId, dateStrs[cIdx - 1]);
-    else if (key === 'ArrowRight' && cIdx < dateStrs.length - 1) focusCell(wbsElementId, dateStrs[cIdx + 1]);
-    else if (key === 'Delete' || key === 'Backspace') {
-        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-ac-${wbsElementId}-${date}`]);
-        const costs = Array.from(cellsToUpdate).map(cellId => {
-            const [,,, ...dateParts] = cellId.split('-');
-            const cellWbsId = Number(cellId.split('-')[2]);
-            return {
-                wbsElementId: cellWbsId,
-                workDate: dateParts.join('-'),
-                actualCost: null,
-            };
-        });
-        invoke('upsert_actual_costs_bulk', { payload: { costs } })
-            .then(() => fetchAllData())
-            .catch(err => console.error("Bulk delete failed:", err));
-    }
-  }, [activityRowIds, dateStrs, handleAcChange, selectedCells, fetchAllData]);
 
-  const handleCellPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startDate: string) => {
+    const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
+    const rowIndex = findRowIndex(wbsElementId, userId);
+    const colIndex = dateStrs.indexOf(date);
+
+    if (key === 'ArrowUp' && rowIndex > 0) {
+      const { wbsId, userId } = activityRowIds[rowIndex - 1];
+      focusCell(wbsId, userId, date);
+    } else if (key === 'ArrowDown' && rowIndex < activityRowIds.length - 1) {
+      const { wbsId, userId } = activityRowIds[rowIndex + 1];
+      focusCell(wbsId, userId, date);
+    } else if (key === 'ArrowLeft' && colIndex > 0) {
+      focusCell(wbsElementId, userId, dateStrs[colIndex - 1]);
+    } else if (key === 'ArrowRight' && colIndex < dateStrs.length - 1) {
+      focusCell(wbsElementId, userId, dateStrs[colIndex + 1]);
+    } else if (key === 'Delete' || key === 'Backspace') {
+        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-ac-${wbsElementId}-${userId}-${date}`]);
+        const costs = Array.from(cellsToUpdate).map(cellId => {
+            const parts = cellId.split('-');
+            const wbsId = Number(parts[2]);
+            const uId = Number(parts[3]);
+            const d = parts.slice(4).join('-');
+            return { wbsElementId: wbsId, userId: uId, workDate: d, actualCost: null };
+        });
+
+        // Optimistic UI update
+        setExecutionData(prev => {
+            const newData = JSON.parse(JSON.stringify(prev));
+            costs.forEach(item => {
+                if (newData[item.wbsElementId]?.[item.userId]?.[item.workDate]?.ac) {
+                    delete newData[item.wbsElementId][item.userId][item.workDate].ac;
+                }
+            });
+            return newData;
+        });
+
+        invoke('upsert_actual_costs_bulk', { payload: { costs } })
+            .catch(err => { console.error("Bulk delete failed:", err); fetchAllData(); });
+    }
+  }, [activityRowIds, dateStrs, selectedCells, fetchAllData]);
+
+  const handleCellPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startUserId: number, startDate: string) => {
     e.preventDefault();
     if (isReadOnly) return;
 
     const pasteData = e.clipboardData.getData('text');
-    try {
-        if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
-            const valueStr = pasteData.trim();
-            const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
-            const costs = Array.from(selectedCells).map(cellId => {
-                const [,,, ...dateParts] = cellId.split('-');
-                const cellWbsId = Number(cellId.split('-')[2]);
-                return { wbsElementId: cellWbsId, workDate: dateParts.join('-'), actualCost: value };
-            });
-            await invoke('upsert_actual_costs_bulk', { payload: { costs } });
-        } else {
-            const rows = pasteData.split(/\r\n|\n|\r/);
-            const startRIdx = activityRowIds.indexOf(startWbsId);
-            const startCIdx = dateStrs.indexOf(startDate);
-            if (startRIdx === -1 || startCIdx === -1) return;
+    const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
+    let costs: { wbsElementId: number, userId: number, workDate: string, actualCost: number | null }[] = [];
 
-            const costs: { wbsElementId: number, workDate: string, actualCost: number | null }[] = [];
-            for (let i = 0; i < rows.length; i++) {
-                const rowData = rows[i].split('\t');
-                const rIdx = startRIdx + i;
-                if (rIdx >= activityRowIds.length) break;
-                const wbsId = activityRowIds[rIdx];
+    if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
+        const valueStr = pasteData.trim();
+        const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
+        costs = Array.from(selectedCells).map(cellId => {
+            const parts = cellId.split('-');
+            return { wbsElementId: Number(parts[2]), userId: Number(parts[3]), workDate: parts.slice(4).join('-'), actualCost: value };
+        });
+    } else {
+        const rows = pasteData.split(/\r\n|\n|\r/);
+        const startRIdx = findRowIndex(startWbsId, startUserId);
+        const startCIdx = dateStrs.indexOf(startDate);
+        if (startRIdx === -1 || startCIdx === -1) return;
 
-                for (let j = 0; j < rowData.length; j++) {
-                    const cIdx = startCIdx + j;
-                    if (cIdx >= dateStrs.length) break;
-                    const date = dateStrs[cIdx];
-                    const value = !isNaN(parseFloat(rowData[j])) ? parseFloat(rowData[j]) : null;
-                    costs.push({ wbsElementId: wbsId, workDate: date, actualCost: value });
+        for (let i = 0; i < rows.length; i++) {
+            const rowData = rows[i].split('\t');
+            const rIdx = startRIdx + i;
+            if (rIdx >= activityRowIds.length) break;
+            const { wbsId, userId } = activityRowIds[rIdx];
+
+            for (let j = 0; j < rowData.length; j++) {
+                const cIdx = startCIdx + j;
+                if (cIdx >= dateStrs.length) break;
+                const value = !isNaN(parseFloat(rowData[j])) ? parseFloat(rowData[j]) : null;
+                costs.push({ wbsElementId: wbsId, userId, workDate: dateStrs[cIdx], actualCost: value });
+            }
+        }
+    }
+    
+    if (costs.length === 0) return;
+
+    // Optimistic UI update
+    setExecutionData(prev => {
+        const newData = JSON.parse(JSON.stringify(prev));
+        costs.forEach(item => {
+            const ensurePath = (wbsId: number, uId: number, d: string) => {
+                if (!newData[wbsId]) newData[wbsId] = {};
+                if (!newData[wbsId][uId]) newData[wbsId][uId] = {};
+                if (!newData[wbsId][uId][d]) newData[wbsId][uId][d] = {};
+            };
+            ensurePath(item.wbsElementId, item.userId, item.workDate);
+            if(item.actualCost !== null && item.actualCost > 0) {
+                newData[item.wbsElementId][item.userId][item.workDate].ac = { id: -1, value: item.actualCost };
+            } else {
+                if(newData[item.wbsElementId]?.[item.userId]?.[item.workDate]?.ac) {
+                    delete newData[item.wbsElementId][item.userId][item.workDate].ac;
                 }
             }
-            await invoke('upsert_actual_costs_bulk', { payload: { costs } });
-        }
-        fetchAllData();
+        });
+        return newData;
+    });
+
+    try {
+        await invoke('upsert_actual_costs_bulk', { payload: { costs } });
+        fetchAllData(); // Re-sync with DB to get correct IDs
     } catch (err) {
         console.error("Bulk paste failed:", err);
+        fetchAllData(); // Revert on error
     }
   }, [activityRowIds, dateStrs, isReadOnly, fetchAllData, selectedCells]);
 
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
       if (selectedCells.size === 0 || !e.clipboardData) return;
-      
       const activeEl = document.activeElement;
       if (!activeEl || !activeEl.id.startsWith('cell-ac-')) return;
-
       e.preventDefault();
 
+      const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
       let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
       
       const cellCoords = Array.from(selectedCells).map(cellId => {
-        const [,,, ...dateParts] = cellId.split('-');
-        const date = dateParts.join('-');
-        const wbsId = Number(cellId.split('-')[2]);
-        const r = activityRowIds.indexOf(wbsId);
+        const parts = cellId.split('-');
+        const wbsId = Number(parts[2]);
+        const userId = Number(parts[3]);
+        const date = parts.slice(4).join('-');
+        const r = findRowIndex(wbsId, userId);
         const c = dateStrs.indexOf(date);
         if (r > -1 && c > -1) {
             minRow = Math.min(minRow, r); maxRow = Math.max(maxRow, r);
             minCol = Math.min(minCol, c); maxCol = Math.max(maxCol, c);
         }
-        return { r, c, wbsId, date };
+        return { r, c, wbsId, userId, date };
       }).filter(item => item.r > -1 && item.c > -1);
 
       if (minRow === Infinity) return;
 
       const grid: (number | string)[][] = Array(maxRow - minRow + 1).fill(0).map(() => Array(maxCol - minCol + 1).fill(''));
       
-      for (const { r, c, wbsId, date } of cellCoords) {
-        const cellId = `cell-ac-${wbsId}-${date}`;
-        if (selectedCells.has(cellId)) {
-            const value = executionData[wbsId]?.[date]?.ac?.value;
-            grid[r - minRow][c - minCol] = value ?? '';
+      cellCoords.forEach(({ r, c, wbsId, userId, date }) => {
+        if (selectedCells.has(`cell-ac-${wbsId}-${userId}-${date}`)) {
+          const value = executionData[wbsId]?.[userId]?.[date]?.ac?.value;
+          grid[r - minRow][c - minCol] = value ?? '';
         }
-      }
+      });
       
       const tsv = grid.map(row => row.join('\t')).join('\n');
       e.clipboardData.setData('text/plain', tsv);
@@ -569,7 +663,20 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {tree.map(node => <GridRow key={node.id} node={node} level={0} days={daysInMonth} data={executionData} allElements={elements} onAcChange={handleAcChange} isReadOnly={isReadOnly} onCellKeyDown={handleCellKeyDown} onCellPaste={handleCellPaste} onCellMouseDown={handleCellMouseDown} onCellMouseOver={handleCellMouseOver} selectedCells={selectedCells} />)}
+              {tree.map(node => 
+                <GridRow 
+                    key={node.id} node={node} level={0} days={daysInMonth} 
+                    data={executionData} allElements={elements} users={users}
+                    assignedUsers={assignedUsers[node.wbsElementId] || new Set()}
+                    onAcChange={handleAcChange} isReadOnly={isReadOnly} 
+                    onAddUser={handleAddUserToActivity}
+                    onCellKeyDown={handleCellKeyDown} 
+                    onCellPaste={handleCellPaste} 
+                    onCellMouseDown={handleCellMouseDown} 
+                    onCellMouseOver={handleCellMouseOver} 
+                    selectedCells={selectedCells} 
+                />
+              )}
             </Table.Tbody>
           </Table>
         </Box>
