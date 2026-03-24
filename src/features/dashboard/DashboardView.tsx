@@ -1,18 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import {
   SimpleGrid,
   Text,
   Center,
   Loader,
-  Alert,
   Title,
   Stack,
   Button,
   Group
 } from '@mantine/core';
-import { IconAlertCircle, IconPlus } from '@tabler/icons-react';
-import { WbsElementDetail, WidgetConfig } from '../../types';
+import { IconPlus } from '@tabler/icons-react';
+import { WidgetConfig } from '../../types';
 import { DashboardWidget } from './DashboardWidget';
 
 const DEFAULT_WIDGETS: Omit<WidgetConfig, 'id'>[] = [

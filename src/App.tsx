@@ -23,11 +23,11 @@ import { AllocationGrid } from './features/allocations/AllocationGrid';
 import { ExecutionView } from './features/execution/ExecutionView';
 import { DashboardView } from './features/dashboard/DashboardView';
 
-const createProjectSchema: z.ZodType<{ name: string }> = z.object({
+const createProjectSchema = z.object({
   name: z.string().min(1, { message: 'Project name is required' }),
 });
 
-const createBaselineSchema: z.ZodType<{ name: string }> = z.object({
+const createBaselineSchema = z.object({
   name: z.string().min(1, { message: 'Baseline name is required' }),
 });
 
