@@ -82,3 +82,18 @@ pub async fn list_wbs_elements(
     let elements = db::list_wbs_elements(&pool, plan_version_id).await?;
     Ok(elements)
 }
+
+#[tauri::command]
+pub async fn list_projects(pool: State<'_, SqlitePool>) -> AppResult<Vec<Project>> {
+    let projects = db::list_projects(&pool).await?;
+    Ok(projects)
+}
+
+#[tauri::command]
+pub async fn list_plan_versions_for_project(
+    pool: State<'_, SqlitePool>,
+    project_id: i64,
+) -> AppResult<Vec<PlanVersion>> {
+    let versions = db::list_plan_versions_for_project(&pool, project_id).await?;
+    Ok(versions)
+}

@@ -188,3 +188,25 @@ pub async fn list_wbs_elements(
     .await?;
     Ok(elements)
 }
+
+/// すべてのプロジェクトを取得します。
+pub async fn list_projects(pool: &SqlitePool) -> DbResult<Vec<Project>> {
+    let projects = sqlx::query_as::<_, Project>("SELECT * FROM projects ORDER BY name")
+        .fetch_all(pool)
+        .await?;
+    Ok(projects)
+}
+
+/// 指定されたプロジェクトIDに属する全ての計画バージョンを取得します。
+pub async fn list_plan_versions_for_project(
+    pool: &SqlitePool,
+    project_id: i64,
+) -> DbResult<Vec<PlanVersion>> {
+    let versions = sqlx::query_as::<_, PlanVersion>(
+        "SELECT * FROM plan_versions WHERE project_id = ? ORDER BY id DESC",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(versions)
+}
