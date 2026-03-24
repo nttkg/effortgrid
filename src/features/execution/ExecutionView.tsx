@@ -154,11 +154,11 @@ const ResourceCapacityFooter = ({ users, elements, data, daysInMonth }: {
 };
 
 const GridRow = ({ 
-    node, level, days, data, allElements, users, assignedUsersMap,
+    node, level, days, data, allElements, allPlanActuals, users, assignedUsersMap,
     onAcChange, isReadOnly, onAddUser,
     onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells 
 }: {
-  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[]; users: User[];
+  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[]; allPlanActuals: ActualCost[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
   onAcChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
   isReadOnly: boolean;
@@ -197,22 +197,28 @@ const GridRow = ({
     }, 0);
   };
 
-  const totalForMonth = (type: 'pv' | 'ac') => {
-    return days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), type), 0);
-  };
+  const { nodeTotalActuals } = useMemo(() => {
+    const getDescendantActivityIds = (startNode: TreeNode): number[] => {
+        let ids: number[] = [];
+        const stack: TreeNode[] = [startNode];
+        while (stack.length > 0) {
+            const currentNode = stack.pop()!;
+            if (currentNode.elementType === 'Activity') ids.push(currentNode.wbsElementId);
+            currentNode.children.forEach(child => stack.push(child));
+        }
+        return ids;
+    };
+    const activityIds = getDescendantActivityIds(node);
+    const totalActuals = allPlanActuals
+        .filter(ac => activityIds.includes(ac.wbsElementId))
+        .reduce((sum, ac) => sum + ac.actualCost, 0);
+    return { nodeTotalActuals: totalActuals };
+  }, [node, allPlanActuals]);
 
-  const totalForUserMonth = (userId: number, type: 'pv' | 'ac') => {
-    if (!isActivity) return 0;
-    const userEntries = data[node.wbsElementId]?.[userId];
-    if (!userEntries) return 0;
-    return days.reduce((total, day) => {
-      const dateStr = day.format('YYYY-MM-DD');
-      const cell = userEntries[dateStr];
-      if (!cell) return total;
-      if (type === 'pv') return total + (cell.pv || 0);
-      if (type === 'ac') return total + (cell.ac?.value || 0);
-      return total;
-    }, 0);
+  const userTotalActuals = (userId: number) => {
+    return allPlanActuals
+        .filter(ac => ac.wbsElementId === node.wbsElementId && ac.userId === userId)
+        .reduce((sum, ac) => sum + ac.actualCost, 0);
   };
 
   const usersToRender = useMemo(() => {
@@ -261,7 +267,7 @@ const GridRow = ({
           );
         })}
         <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-          <Text size="sm" c="dimmed">{totalForMonth('pv') > 0 ? totalForMonth('pv').toFixed(1) : ''}</Text>
+          {/* This column is now empty for the PV row */}
         </Table.Td>
       </Table.Tr>
       {/* AC Row (Actual) */}
@@ -275,7 +281,7 @@ const GridRow = ({
           );
         })}
         <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
-          <Text size="sm" fw={500}>{totalForMonth('ac') > 0 ? totalForMonth('ac').toFixed(1) : ''}</Text>
+          <Text size="sm" fw={500}>{nodeTotalActuals > 0 ? nodeTotalActuals.toFixed(1) : ''}</Text>
         </Table.Td>
       </Table.Tr>
 
@@ -300,7 +306,7 @@ const GridRow = ({
                 </Table.Td>
               ))}
               <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                <Text size="sm" c="dimmed">{totalForUserMonth(userId, 'pv') > 0 ? totalForUserMonth(userId, 'pv').toFixed(1) : ''}</Text>
+                {/* This column is now empty for the user's PV row */}
               </Table.Td>
             </Table.Tr>
             {/* User AC Row */}
@@ -324,7 +330,7 @@ const GridRow = ({
                 );
               })}
               <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
-                <Text size="sm" fw={500}>{totalForUserMonth(userId, 'ac') > 0 ? totalForUserMonth(userId, 'ac').toFixed(1) : ''}</Text>
+                <Text size="sm" fw={500}>{userTotalActuals(userId) > 0 ? userTotalActuals(userId).toFixed(1) : ''}</Text>
               </Table.Td>
             </Table.Tr>
           </React.Fragment>
@@ -332,7 +338,7 @@ const GridRow = ({
       })}
 
       {/* Child WBS Element Rows */}
-      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} users={users} assignedUsersMap={assignedUsersMap} onAcChange={onAcChange} onAddUser={onAddUser} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
+      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} allPlanActuals={allPlanActuals} users={users} assignedUsersMap={assignedUsersMap} onAcChange={onAcChange} onAddUser={onAddUser} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
     </>
   );
 };
@@ -343,6 +349,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [executionData, setExecutionData] = useState<ExecutionMap>({});
+  const [allPlanActuals, setAllPlanActuals] = useState<ActualCost[]>([]);
   const [assignedUsers, setAssignedUsers] = useState<{ [wbsId: number]: Set<number> }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -364,18 +371,20 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
-      setElements([]); setExecutionData({}); setAssignedUsers({}); return;
+      setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); return;
     }
     setIsLoading(true); setError(null);
     const start = daysInMonth[0].format('YYYY-MM-DD');
     const end = daysInMonth[daysInMonth.length - 1].format('YYYY-MM-DD');
 
     try {
-      const [wbs, data] = await Promise.all([
+      const [wbs, data, allActuals] = await Promise.all([
         invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId }),
         invoke<ExecutionData>('get_execution_data', { payload: { planVersionId, startDate: start, endDate: end } }),
+        invoke<ActualCost[]>('list_all_actuals_for_plan_version', { planVersionId }),
       ]);
       setElements(wbs);
+      setAllPlanActuals(allActuals);
 
       const execMap: ExecutionMap = {};
       const initialAssigned: { [wbsId: number]: Set<number> } = {};
@@ -769,14 +778,14 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                     </Table.Th>
                   );
                 })}
-                <Table.Th>Month Totals</Table.Th>
+                <Table.Th>Total AC</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {tree.map(node => 
                 <GridRow 
                     key={node.id} node={node} level={0} days={daysInMonth} 
-                    data={executionData} allElements={elements} users={users}
+                    data={executionData} allElements={elements} allPlanActuals={allPlanActuals} users={users}
                     assignedUsersMap={assignedUsers}
                     onAcChange={handleAcChange} isReadOnly={isReadOnly} 
                     onAddUser={handleAddUserToActivity}

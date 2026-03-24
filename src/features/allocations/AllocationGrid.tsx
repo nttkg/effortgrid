@@ -167,16 +167,11 @@ const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
                 <Table.Th></Table.Th>
                 <Table.Th></Table.Th>
                 <Table.Th colSpan={daysInMonth.length}></Table.Th>
-                <Table.Th></Table.Th>
             </Table.Tr>
             {activeUserIds.map(userId => {
                 const user = userMap.get(userId);
                 const capacity = user?.dailyCapacity ?? 8.0; // Default capacity
                 if (!user) return null;
-
-                const totalForMonth = daysInMonth.reduce((sum, day) => {
-                    return sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0);
-                }, 0);
 
                 return (
                     <Table.Tr key={userId}>
@@ -199,7 +194,6 @@ const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
                                 </Table.Td>
                             );
                         })}
-                        <Table.Td>{totalForMonth > 0 ? totalForMonth.toFixed(1) : ''}</Table.Td>
                     </Table.Tr>
                 );
             })}
@@ -286,26 +280,6 @@ const GridRow = ({
     }, 0);
   };
   
-  const totalForActivityMonth = useMemo(() => {
-    if (!isActivity) return 0;
-    const activityAllocs = allocations[node.wbsElementId];
-    if (!activityAllocs) return 0;
-    return days.reduce((total, day) => {
-      const dateStr = day.format('YYYY-MM-DD');
-      return total + Object.values(activityAllocs).reduce((dayTotal, userAllocs) => dayTotal + (userAllocs[dateStr]?.pv || 0), 0);
-    }, 0);
-  }, [days, allocations, node, isActivity]);
-
-  const totalForUserMonth = (userId: number) => {
-    if (!isActivity) return 0;
-    const userAllocs = allocations[node.wbsElementId]?.[userId];
-    if (!userAllocs) return 0;
-    return days.reduce((total, day) => {
-        const dateStr = day.format('YYYY-MM-DD');
-        return total + (userAllocs[dateStr]?.pv || 0);
-    }, 0);
-  };
-  
   const usersToRender = useMemo(() => {
     const userIds = Array.from(assignedUsers);
     if (hasUnassignedPv && !userIds.includes(0)) {
@@ -361,7 +335,6 @@ const GridRow = ({
             {getRollupValue(day.format('YYYY-MM-DD')) > 0 ? getRollupValue(day.format('YYYY-MM-DD')).toFixed(1) : '-'}
           </Table.Td>
         ))}
-        <Table.Td className={classes.summary_col}>{totalForActivityMonth > 0 ? totalForActivityMonth.toFixed(1) : '-'}</Table.Td>
       </Table.Tr>
       
       {/* User rows for Activities */}
@@ -402,7 +375,6 @@ const GridRow = ({
                 </Table.Td>
               );
             })}
-            <Table.Td className={classes.summary_col}>{totalForUserMonth(userId) > 0 ? totalForUserMonth(userId).toFixed(1) : '-'}</Table.Td>
           </Table.Tr>
         )
       })}
@@ -889,7 +861,6 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                     </Table.Th>
                   );
                 })}
-                <Table.Th>Month Total</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>

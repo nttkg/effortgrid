@@ -814,6 +814,40 @@ pub async fn list_actuals_for_period(
     Ok(records)
 }
 
+pub async fn list_all_actuals_for_plan_version(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+) -> DbResult<Vec<ActualCost>> {
+    let activity_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND element_type = 'Activity' AND is_deleted = false",
+    )
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+
+    let activity_ids: Vec<i64> = activity_ids.into_iter().map(|(id,)| id).collect();
+
+    if activity_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let params = activity_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT * FROM actual_costs WHERE wbs_element_id IN ({}) AND is_deleted = false",
+        params
+    );
+    
+    let mut query = sqlx::query_as::<_, ActualCost>(&sql);
+    for id in &activity_ids {
+        query = query.bind(id);
+    }
+    
+    let records = query.fetch_all(pool).await?;
+
+    Ok(records)
+}
+
+
 // ----- Execution: Progress Updates (EV) -----
 
 pub async fn add_progress_update(

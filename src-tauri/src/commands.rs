@@ -451,6 +451,15 @@ pub async fn list_all_allocations_for_plan_version(
 }
 
 #[tauri::command]
+pub async fn list_all_actuals_for_plan_version(
+    pool: State<'_, SqlitePool>,
+    plan_version_id: i64,
+) -> AppResult<Vec<ActualCost>> {
+    let actuals = db::list_all_actuals_for_plan_version(&pool, plan_version_id).await?;
+    Ok(actuals)
+}
+
+#[tauri::command]
 pub async fn list_allocations_for_period(
     pool: State<'_, SqlitePool>,
     payload: ListAllocationsForPeriodPayload,
