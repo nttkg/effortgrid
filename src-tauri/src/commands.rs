@@ -92,6 +92,7 @@ pub struct ListAllocationsForPeriodPayload {
 pub struct UpsertDailyAllocationPayload {
     plan_version_id: i64,
     wbs_element_id: i64,
+    user_id: Option<i64>,
     date: NaiveDate,
     planned_value: Option<f64>,
 }
@@ -100,6 +101,7 @@ pub struct UpsertDailyAllocationPayload {
 #[serde(rename_all = "camelCase")]
 pub struct UpsertActualCostPayload {
     wbs_element_id: i64,
+    user_id: i64,
     work_date: NaiveDate,
     actual_cost: Option<f64>,
 }
@@ -128,6 +130,7 @@ pub struct CreateBaselinePayload {
 #[serde(rename_all = "camelCase")]
 pub struct AddActualCostPayload {
     wbs_element_id: i64,
+    user_id: i64,
     work_date: NaiveDate,
     actual_cost: f64,
 }
@@ -464,6 +467,7 @@ pub async fn upsert_daily_allocation(
         &pool,
         payload.plan_version_id,
         payload.wbs_element_id,
+        payload.user_id,
         payload.date,
         payload.planned_value,
     )
@@ -499,11 +503,14 @@ pub async fn add_actual_cost(
     payload: AddActualCostPayload,
 ) -> AppResult<ActualCost> {
     check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
-    // For now, hardcode user_id as 1. User management is out of scope.
-    let user_id = 1;
-    let record =
-        db::add_actual_cost(&pool, payload.wbs_element_id, user_id, payload.work_date, payload.actual_cost)
-            .await?;
+    let record = db::add_actual_cost(
+        &pool,
+        payload.wbs_element_id,
+        payload.user_id,
+        payload.work_date,
+        payload.actual_cost,
+    )
+    .await?;
     Ok(record)
 }
 
@@ -513,12 +520,10 @@ pub async fn upsert_actual_cost(
     payload: UpsertActualCostPayload,
 ) -> AppResult<()> {
     check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
-    // For now, hardcode user_id as 1. User management is out of scope.
-    let user_id = 1;
     db::upsert_actual_cost(
         &pool,
         payload.wbs_element_id,
-        user_id,
+        payload.user_id,
         payload.work_date,
         payload.actual_cost,
     )
@@ -534,9 +539,7 @@ pub async fn upsert_actual_costs_bulk(
     let wbs_ids: Vec<i64> = payload.costs.iter().map(|c| c.wbs_element_id).collect();
     check_are_activities_in_draft(&pool, &wbs_ids).await?;
 
-    // For now, hardcode user_id as 1. User management is out of scope.
-    let user_id = 1;
-    db::upsert_actual_costs_bulk(&pool, user_id, &payload.costs).await?;
+    db::upsert_actual_costs_bulk(&pool, &payload.costs).await?;
     Ok(())
 }
 
@@ -617,6 +620,53 @@ pub async fn get_execution_data(
         pv_allocations,
         actual_costs,
     })
+}
+
+// ----- User Management -----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPayload {
+    name: String,
+    role: String,
+    email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateUserPayload {
+    id: i64,
+    name: String,
+    role: String,
+    email: Option<String>,
+}
+
+#[tauri::command]
+pub async fn add_user(pool: State<'_, SqlitePool>, payload: UserPayload) -> AppResult<User> {
+    let new_user = db::add_user(&pool, &payload.name, &payload.role, payload.email.as_deref()).await?;
+    Ok(new_user)
+}
+
+#[tauri::command]
+pub async fn update_user(
+    pool: State<'_, SqlitePool>,
+    payload: UpdateUserPayload,
+) -> AppResult<User> {
+    let updated_user = db::update_user(
+        &pool,
+        payload.id,
+        &payload.name,
+        &payload.role,
+        payload.email.as_deref(),
+    )
+    .await?;
+    Ok(updated_user)
+}
+
+#[tauri::command]
+pub async fn delete_user(pool: State<'_, SqlitePool>, id: i64) -> AppResult<u64> {
+    let rows_affected = db::delete_user(&pool, id).await?;
+    Ok(rows_affected)
 }
 
 #[tauri::command]
