@@ -97,7 +97,14 @@ const PvInputCell = ({
       onPaste={(e) => onPaste(e, wbsElementId, date)}
       onMouseDown={onMouseDown}
       onMouseOver={onMouseOver}
-      style={{ backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : undefined, cursor: 'cell' }}
+      style={{
+        backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
+        height: '100%',
+      }}
+      styles={{
+        wrapper: { height: '100%' },
+        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)' }
+      }}
       step={0.1}
       min={0}
       hideControls
@@ -177,7 +184,7 @@ const GridRow = ({
           const dateStr = day.format('YYYY-MM-DD');
           const cellId = `cell-pv-${node.wbsElementId}-${dateStr}`;
           return (
-            <Table.Td key={dateStr}>
+            <Table.Td key={dateStr} style={node.elementType === 'Activity' ? { padding: 0 } : {}}>
               {node.elementType === 'Activity' ? (
                 <PvInputCell
                   wbsElementId={node.wbsElementId}
