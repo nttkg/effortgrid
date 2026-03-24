@@ -38,6 +38,19 @@ pub async fn init_db(app_handle: &AppHandle) -> DbResult<SqlitePool> {
     // 起動時にマイグレーションを自動実行します。
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    // --- Seed initial data ---
+    // Create a default user if none exists. This is necessary for
+    // creating actual_costs and progress_updates which require a user_id.
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&pool)
+        .await?;
+
+    if user_count == 0 {
+        sqlx::query("INSERT INTO users (id, name, role) VALUES (1, 'Default User', 'Developer')")
+            .execute(&pool)
+            .await?;
+    }
+
     Ok(pool)
 }
 
