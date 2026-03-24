@@ -312,17 +312,20 @@ const GridRow = ({
                   <Text size="xs">{isUnassigned ? 'Unassigned' : user?.name}</Text>
                 </Group>
               </Table.Td>
+              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                <Text size="sm" c="dimmed">{userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : ''}</Text>
+              </Table.Td>
               {days.map(day => (
                 <Table.Td key={`${day.format()}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
                   <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[userId]?.[day.format('YYYY-MM-DD')]?.pv?.toFixed(1) || ''}</Text>
                 </Table.Td>
               ))}
-              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                <Text size="sm" c="dimmed">{userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : ''}</Text>
-              </Table.Td>
             </Table.Tr>
             {/* User AC Row */}
             <Table.Tr>
+              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+                <Text size="sm" fw={500}>{userTotalActuals(userId) > 0 ? userTotalActuals(userId).toFixed(1) : ''}</Text>
+              </Table.Td>
               {days.map(day => {
                 const dateStr = day.format('YYYY-MM-DD');
                 const cellId = `cell-ac-${node.wbsElementId}-${userId}-${dateStr}`;
@@ -341,9 +344,6 @@ const GridRow = ({
                   </Table.Td>
                 );
               })}
-              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
-                <Text size="sm" fw={500}>{userTotalActuals(userId) > 0 ? userTotalActuals(userId).toFixed(1) : ''}</Text>
-              </Table.Td>
             </Table.Tr>
           </React.Fragment>
         )
