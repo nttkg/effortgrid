@@ -16,6 +16,7 @@ import {
   Slider,
   Table,
   Center,
+  Loader,
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -233,15 +234,26 @@ const ProgressUpdateTab = ({ activity }: { activity: WbsElementDetail }) => {
 export function ExecutionView({ planVersionId, isReadOnly }: ExecutionViewProps) {
   const [wbsElements, setWbsElements] = useState<WbsElementDetail[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<WbsElementDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchWbsElements = useCallback(async () => {
-    if (!planVersionId) return;
+    if (!planVersionId) {
+      setIsLoading(false);
+      setWbsElements([]);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
     try {
         const result = await invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId });
         setWbsElements(result);
-    } catch (e) {
+    } catch (e: any) {
         console.error("Failed to fetch WBS elements:", e);
+        setError('Failed to load WBS data. Check console for details.');
         setWbsElements([]);
+    } finally {
+        setIsLoading(false);
     }
   }, [planVersionId]);
 
@@ -278,6 +290,14 @@ export function ExecutionView({ planVersionId, isReadOnly }: ExecutionViewProps)
 
   if (!planVersionId) {
     return <Text c="dimmed" ta="center" pt="xl">Please select a project to start tracking execution.</Text>;
+  }
+
+  if (isLoading) {
+    return <Center style={{ height: '100%' }}><Loader /></Center>;
+  }
+
+  if (error) {
+    return <Alert color="red" title="Error" icon={<IconAlertCircle />}>{error}</Alert>;
   }
 
   return (
