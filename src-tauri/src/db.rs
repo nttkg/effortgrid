@@ -841,41 +841,10 @@ pub async fn add_progress_update(
 }
 
 pub async fn list_users(pool: &SqlitePool) -> DbResult<Vec<User>> {
-    let users = sqlx::query_as::<_, User>("SELECT id, name, role FROM users ORDER BY name")
+    let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY name")
         .fetch_all(pool)
         .await?;
     Ok(users)
-}
-
-pub async fn list_plan_milestones(pool: &SqlitePool, plan_version_id: i64) -> DbResult<Vec<PlanMilestone>> {
-    let milestones = sqlx::query_as::<_, PlanMilestone>(
-        "SELECT * FROM plan_milestones WHERE plan_version_id = ? AND is_deleted = false ORDER BY target_date",
-    )
-    .bind(plan_version_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(milestones)
-}
-
-pub async fn list_all_tags_for_plan_version(pool: &SqlitePool, plan_version_id: i64) -> DbResult<Vec<String>> {
-    let tags_json: Vec<(String,)> = sqlx::query_as(
-        "SELECT tags FROM wbs_element_details WHERE plan_version_id = ? AND tags IS NOT NULL AND json_valid(tags) AND json_array_length(tags) > 0",
-    )
-    .bind(plan_version_id)
-    .fetch_all(pool)
-    .await?;
-
-    let mut all_tags = std::collections::HashSet::new();
-    for (json_str,) in tags_json {
-        if let Ok(tags) = serde_json::from_str::<Vec<String>>(&json_str) {
-            for tag in tags {
-                all_tags.insert(tag);
-            }
-        }
-    }
-    let mut sorted_tags: Vec<String> = all_tags.into_iter().collect();
-    sorted_tags.sort_unstable();
-    Ok(sorted_tags)
 }
 
 pub async fn get_progress_updates_for_element(

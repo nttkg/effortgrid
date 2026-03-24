@@ -13,6 +13,7 @@ import {
   Title,
   Text,
 } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
 import { z } from 'zod';
@@ -142,6 +143,7 @@ function App() {
 
   return (
     <>
+      <Notifications />
       <Modal opened={createModalOpened} onClose={closeCreateModal} title="Create New Portfolio">
         <form onSubmit={portfolioForm.onSubmit(handleCreatePortfolio)}>
           <Stack>

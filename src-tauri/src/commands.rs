@@ -676,24 +676,6 @@ pub async fn list_users(pool: State<'_, SqlitePool>) -> AppResult<Vec<User>> {
 }
 
 #[tauri::command]
-pub async fn list_plan_milestones(
-    pool: State<'_, SqlitePool>,
-    plan_version_id: i64,
-) -> AppResult<Vec<PlanMilestone>> {
-    let milestones = db::list_plan_milestones(&pool, plan_version_id).await?;
-    Ok(milestones)
-}
-
-#[tauri::command]
-pub async fn list_all_tags_for_plan_version(
-    pool: State<'_, SqlitePool>,
-    plan_version_id: i64,
-) -> AppResult<Vec<String>> {
-    let tags = db::list_all_tags_for_plan_version(&pool, plan_version_id).await?;
-    Ok(tags)
-}
-
-#[tauri::command]
 pub async fn get_filterable_wbs_nodes(
     pool: State<'_, SqlitePool>,
     plan_version_id: i64,
