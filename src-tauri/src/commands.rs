@@ -92,6 +92,13 @@ pub struct UpsertDailyAllocationPayload {
     planned_value: Option<f64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBaselinePayload {
+    project_id: i64,
+    baseline_name: String,
+}
+
 
 // ----- Tauri Commands -----
 
@@ -284,4 +291,14 @@ pub async fn upsert_daily_allocation(
     )
     .await?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn create_baseline(
+    pool: State<'_, SqlitePool>,
+    payload: CreateBaselinePayload,
+) -> AppResult<PlanVersion> {
+    let new_baseline =
+        db::create_baseline(&pool, payload.project_id, &payload.baseline_name).await?;
+    Ok(new_baseline)
 }

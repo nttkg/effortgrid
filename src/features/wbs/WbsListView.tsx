@@ -29,6 +29,7 @@ interface TreeNode extends WbsElementDetail {
 
 interface WbsListViewProps {
   planVersionId: number | null;
+  isReadOnly: boolean;
 }
 
 const addElementSchema = z.object({
@@ -42,11 +43,13 @@ function WbsElementRow({
   level,
   onAddChild,
   onOpenAllocation,
+  isReadOnly,
 }: {
   element: TreeNode;
   level: number;
   onAddChild: (parent: WbsElementDetail) => void;
   onOpenAllocation: (element: WbsElementDetail) => void;
+  isReadOnly: boolean;
 }) {
   const [pv, setPv] = useState(element.estimatedPv ?? '');
 
@@ -97,6 +100,7 @@ function WbsElementRow({
               hideControls
               min={0}
               style={{ width: 100 }}
+              readOnly={isReadOnly}
             />
           ) : (
             <Text c="dimmed" size="sm">
@@ -109,7 +113,7 @@ function WbsElementRow({
             <ActionIcon
               variant="subtle"
               onClick={() => onAddChild(element)}
-              disabled={element.elementType === 'Activity'}
+              disabled={element.elementType === 'Activity' || isReadOnly}
             >
               <IconSitemap size={16} />
             </ActionIcon>
@@ -119,7 +123,7 @@ function WbsElementRow({
               variant="subtle"
               color="blue"
               onClick={() => onOpenAllocation(element)}
-              disabled={element.elementType !== 'Activity'}
+              disabled={element.elementType !== 'Activity' || isReadOnly}
             >
               <IconCalendarStats size={16} />
             </ActionIcon>
@@ -133,13 +137,14 @@ function WbsElementRow({
           level={level + 1}
           onAddChild={onAddChild}
           onOpenAllocation={onOpenAllocation}
+          isReadOnly={isReadOnly}
         />
       ))}
     </>
   );
 }
 
-export function WbsListView({ planVersionId }: WbsListViewProps) {
+export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [addModalOpened, { open: openAddModal, close: closeAddModal }] = useDisclosure(false);
   const [allocModalOpened, { open: openAllocModal, close: closeAllocModal }] =
@@ -293,7 +298,11 @@ export function WbsListView({ planVersionId }: WbsListViewProps) {
 
       <Group justify="space-between" mb="md">
         <Title order={2}>WBS & Estimates</Title>
-        <Button onClick={() => handleOpenAddModal(null)} leftSection={<IconPlus size={14} />}>
+        <Button
+          onClick={() => handleOpenAddModal(null)}
+          leftSection={<IconPlus size={14} />}
+          disabled={isReadOnly}
+        >
           Add Root Element
         </Button>
       </Group>
@@ -315,6 +324,7 @@ export function WbsListView({ planVersionId }: WbsListViewProps) {
               level={0}
               onAddChild={handleOpenAddModal}
               onOpenAllocation={handleOpenAllocModal}
+              isReadOnly={isReadOnly}
             />
           ))}
         </Table.Tbody>

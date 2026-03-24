@@ -392,3 +392,79 @@ pub async fn delete_pv_allocation(pool: &SqlitePool, id: i64) -> DbResult<u64> {
         .execute(pool).await?.rows_affected();
     Ok(rows_affected)
 }
+
+pub async fn create_baseline(pool: &SqlitePool, project_id: i64, baseline_name: &str) -> DbResult<PlanVersion> {
+    let mut tx = pool.begin().await?;
+
+    // 1. Find the current draft plan version
+    let draft_version = sqlx::query_as::<_, PlanVersion>(
+        "SELECT * FROM plan_versions WHERE project_id = ? AND is_draft = true",
+    )
+    .bind(project_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| sqlx::Error::RowNotFound)?;
+
+    // 2. Insert the new baseline version
+    let new_version_id = sqlx::query(
+        "INSERT INTO plan_versions (project_id, name, is_draft) VALUES (?, ?, ?)",
+    )
+    .bind(project_id)
+    .bind(baseline_name)
+    .bind(false)
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid();
+
+    // 3. Copy wbs_element_details
+    sqlx::query(
+        r#"
+        INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, milestone_id, title, description, element_type, estimated_pv, tags, is_deleted)
+        SELECT ?, wbs_element_id, parent_element_id, milestone_id, title, description, element_type, estimated_pv, tags, is_deleted
+        FROM wbs_element_details
+        WHERE plan_version_id = ?
+        "#,
+    )
+    .bind(new_version_id)
+    .bind(draft_version.id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 4. Copy pv_allocations
+    sqlx::query(
+        r#"
+        INSERT INTO pv_allocations (plan_version_id, wbs_element_id, user_id, start_date, end_date, planned_value)
+        SELECT ?, wbs_element_id, user_id, start_date, end_date, planned_value
+        FROM pv_allocations
+        WHERE plan_version_id = ?
+        "#,
+    )
+    .bind(new_version_id)
+    .bind(draft_version.id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 5. Copy plan_milestones
+    sqlx::query(
+        r#"
+        INSERT INTO plan_milestones (plan_version_id, milestone_id, name, target_date, is_deleted)
+        SELECT ?, milestone_id, name, target_date, is_deleted
+        FROM plan_milestones
+        WHERE plan_version_id = ?
+        "#,
+    )
+    .bind(new_version_id)
+    .bind(draft_version.id)
+    .execute(&mut *tx)
+    .await?;
+
+    // Fetch the newly created plan version to return it
+    let new_version = sqlx::query_as::<_, PlanVersion>("SELECT * FROM plan_versions WHERE id = ?")
+        .bind(new_version_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(new_version)
+}

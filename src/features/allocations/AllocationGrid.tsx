@@ -33,6 +33,7 @@ interface AllocationMap {
 
 interface GridProps {
   planVersionId: number | null;
+  isReadOnly: boolean;
 }
 
 // --- Helper Functions ---
@@ -51,9 +52,11 @@ const getBadgeColor = (type: WbsElementType) => {
 const PvInputCell = ({
   initialValue,
   onCommit,
+  isReadOnly,
 }: {
   initialValue?: number;
   onCommit: (value: number | null) => void;
+  isReadOnly: boolean;
 }) => {
   const [value, setValue] = useState<string | number>(initialValue ?? '');
 
@@ -78,6 +81,7 @@ const PvInputCell = ({
       step={0.1}
       min={0}
       hideControls
+      readOnly={isReadOnly}
     />
   );
 };
@@ -89,6 +93,7 @@ const GridRow = ({
   allocations,
   allElements,
   onPvChange,
+  isReadOnly,
 }: {
   node: TreeNode;
   level: number;
@@ -96,6 +101,7 @@ const GridRow = ({
   allocations: AllocationMap;
   allElements: WbsElementDetail[];
   onPvChange: (wbsElementId: number, date: string, value: number | null) => void;
+  isReadOnly: boolean;
 }) => {
   // Memoize descendant IDs to avoid recalculating on every render
   const descendantIds = useMemo(() => {
@@ -144,6 +150,7 @@ const GridRow = ({
                 <PvInputCell
                   initialValue={allocations[node.wbsElementId]?.[dateStr]?.pv}
                   onCommit={(value) => onPvChange(node.wbsElementId, dateStr, value)}
+                  isReadOnly={isReadOnly}
                 />
               ) : (
                 <div className={classes.rollup_cell}>
@@ -165,6 +172,7 @@ const GridRow = ({
           allocations={allocations}
           allElements={allElements}
           onPvChange={onPvChange}
+          isReadOnly={isReadOnly}
         />
       ))}
     </>
@@ -172,7 +180,7 @@ const GridRow = ({
 };
 
 // --- Main Component ---
-export function AllocationGrid({ planVersionId }: GridProps) {
+export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [allocations, setAllocations] = useState<AllocationMap>({});
@@ -321,7 +329,7 @@ export function AllocationGrid({ planVersionId }: GridProps) {
             </Table.Thead>
             <Table.Tbody>
               {tree.map(node => (
-                  <GridRow 
+                  <GridRow
                       key={node.id}
                       node={node}
                       level={0}
@@ -329,6 +337,7 @@ export function AllocationGrid({ planVersionId }: GridProps) {
                       allocations={allocations}
                       allElements={elements}
                       onPvChange={handlePvChange}
+                      isReadOnly={isReadOnly}
                   />
               ))}
             </Table.Tbody>

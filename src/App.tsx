@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   AppShell,
@@ -16,13 +16,17 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
 import { z } from 'zod';
-import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats } from '@tabler/icons-react';
+import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy } from '@tabler/icons-react';
 import { Project, PlanVersion } from './types';
 import { WbsListView } from './features/wbs/WbsListView';
 import { AllocationGrid } from './features/allocations/AllocationGrid';
 
 const createProjectSchema = z.object({
   name: z.string().min(1, { message: 'Project name is required' }),
+});
+
+const createBaselineSchema = z.object({
+  name: z.string().min(1, { message: 'Baseline name is required' }),
 });
 
 function App() {
@@ -35,6 +39,7 @@ function App() {
   const [selectedPlanVersionId, setSelectedPlanVersionId] = useState<string | null>(null);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
+  const [baselineModalOpened, { open: openBaselineModal, close: closeBaselineModal }] = useDisclosure(false);
 
   const fetchProjects = async () => {
     try {
@@ -80,19 +85,47 @@ function App() {
     }
   }, [selectedProjectId]);
 
-  const form = useForm({
+  const selectedPlanVersion = useMemo(
+    () => planVersions.find((v) => String(v.id) === selectedPlanVersionId),
+    [planVersions, selectedPlanVersionId]
+  );
+  const isReadOnly = useMemo(() => (selectedPlanVersion ? !selectedPlanVersion.isDraft : true), [selectedPlanVersion]);
+
+  const projectForm = useForm({
     initialValues: { name: '' },
     validate: zodResolver(createProjectSchema),
+  });
+
+  const baselineForm = useForm({
+    initialValues: { name: '' },
+    validate: zodResolver(createBaselineSchema),
   });
 
   const handleCreateProject = async (values: { name: string }) => {
     try {
       await invoke('create_project', { name: values.name });
       closeCreateModal();
-      form.reset();
+      projectForm.reset();
       await fetchProjects(); // Refresh project list
     } catch (error) {
       console.error('Failed to create project:', error);
+    }
+  };
+
+  const handleCreateBaseline = async (values: { name: string }) => {
+    if (!selectedProjectId) return;
+    try {
+      await invoke('create_baseline', {
+        payload: {
+          projectId: Number(selectedProjectId),
+          baselineName: values.name,
+        },
+      });
+      closeBaselineModal();
+      baselineForm.reset();
+      await fetchPlanVersions(Number(selectedProjectId)); // Refresh plan versions
+    } catch (error) {
+      console.error('Failed to create baseline:', error);
     }
   };
 
@@ -107,16 +140,32 @@ function App() {
   return (
     <>
       <Modal opened={createModalOpened} onClose={closeCreateModal} title="Create New Project">
-        <form onSubmit={form.onSubmit(handleCreateProject)}>
+        <form onSubmit={projectForm.onSubmit(handleCreateProject)}>
           <Stack>
             <TextInput
               withAsterisk
               label="Project Name"
               placeholder="e.g., My Awesome Project"
-              {...form.getInputProps('name')}
+              {...projectForm.getInputProps('name')}
             />
             <Group justify="flex-end" mt="md">
               <Button type="submit">Create Project</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      <Modal opened={baselineModalOpened} onClose={closeBaselineModal} title="Save New Baseline">
+        <form onSubmit={baselineForm.onSubmit(handleCreateBaseline)}>
+          <Stack>
+            <TextInput
+              withAsterisk
+              label="Baseline Name"
+              placeholder='e.g., "V1.0 - Initial Plan"'
+              {...baselineForm.getInputProps('name')}
+            />
+            <Group justify="flex-end" mt="md">
+              <Button type="submit">Save Baseline</Button>
             </Group>
           </Stack>
         </form>
@@ -150,6 +199,15 @@ function App() {
                 style={{ width: 200 }}
               />
             </Group>
+            {selectedPlanVersion?.isDraft && (
+              <Button
+                onClick={openBaselineModal}
+                variant="light"
+                leftSection={<IconDeviceFloppy size={16} />}
+              >
+                Save as Baseline
+              </Button>
+            )}
           </Group>
         </AppShell.Header>
 
@@ -179,8 +237,8 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main>
-          {activeView === 'wbs' && <WbsListView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} />}
-          {activeView === 'allocations' && <AllocationGrid planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} />}
+          {activeView === 'wbs' && <WbsListView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} />}
+          {activeView === 'allocations' && <AllocationGrid planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} />}
         </AppShell.Main>
       </AppShell>
     </>
