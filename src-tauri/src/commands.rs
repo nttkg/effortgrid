@@ -124,6 +124,13 @@ pub struct GetEvmKpisPayload {
     date: NaiveDate,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSCurveDataPayload {
+    plan_version_id: i64,
+    granularity: evm::Granularity,
+}
+
 
 // ----- Tauri Commands -----
 
@@ -425,8 +432,9 @@ pub async fn get_evm_kpis(
 #[tauri::command]
 pub async fn get_s_curve_data(
     pool: State<'_, SqlitePool>,
-    plan_version_id: i64,
+    payload: GetSCurveDataPayload,
 ) -> AppResult<Vec<evm::SCurveDataPoint>> {
-    let data = evm::calculate_s_curve_data(&pool, plan_version_id).await?;
+    let data =
+        evm::calculate_s_curve_data(&pool, payload.plan_version_id, payload.granularity).await?;
     Ok(data)
 }

@@ -11,6 +11,7 @@ import {
   Title,
   Stack,
   Badge,
+  SegmentedControl,
 } from '@mantine/core';
 import {
   ResponsiveContainer,
@@ -21,6 +22,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  Brush,
 } from 'recharts';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { EvmKpis, SCurveDataPoint } from '../../types';
@@ -35,6 +37,7 @@ interface DashboardViewProps {
 export function DashboardView({ planVersionId }: DashboardViewProps) {
   const [kpis, setKpis] = useState<EvmKpis | null>(null);
   const [sCurveData, setSCurveData] = useState<SCurveDataPoint[]>([]);
+  const [granularity, setGranularity] = useState('monthly');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +48,7 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
       const today = dayjs().format('YYYY-MM-DD');
       Promise.all([
         invoke<EvmKpis>('get_evm_kpis', { payload: { planVersionId, date: today } }),
-        invoke<SCurveDataPoint[]>('get_s_curve_data', { planVersionId }),
+        invoke<SCurveDataPoint[]>('get_s_curve_data', { payload: { planVersionId, granularity } }),
       ])
         .then(([kpisData, sCurveData]) => {
           setKpis(kpisData);
@@ -63,7 +66,7 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
         setKpis(null);
         setSCurveData([]);
     }
-  }, [planVersionId]);
+  }, [planVersionId, granularity]);
 
   if (loading) {
     return <Center style={{ height: '100%' }}><Loader /></Center>;
@@ -84,7 +87,18 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
 
   return (
     <Stack>
-        <Title order={2}>EVM Dashboard</Title>
+        <Group justify="space-between">
+            <Title order={2}>EVM Dashboard</Title>
+            <SegmentedControl
+                value={granularity}
+                onChange={setGranularity}
+                data={[
+                    { label: 'Daily', value: 'daily' },
+                    { label: 'Weekly', value: 'weekly' },
+                    { label: 'Monthly', value: 'monthly' },
+                ]}
+            />
+        </Group>
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
             {kpiCards.map(stat => (
                 <Paper withBorder p="md" radius="md" key={stat.title}>
@@ -104,9 +118,10 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="cumulativePv" name="PV (Plan)" stroke="#8884d8" />
-                <Line type="monotone" dataKey="cumulativeAc" name="AC (Actual)" stroke="#ca4f4f" />
-                <Line type="monotone" dataKey="cumulativeEv" name="EV (Earned)" stroke="#82ca9d" />
+                <Line type="monotone" dataKey="cumulativePv" name="PV (Plan)" stroke="#8884d8" dot={false} />
+                <Line type="monotone" dataKey="cumulativeAc" name="AC (Actual)" stroke="#ca4f4f" dot={false} />
+                <Line type="monotone" dataKey="cumulativeEv" name="EV (Earned)" stroke="#82ca9d" dot={false} />
+                <Brush dataKey="date" height={30} stroke="#8884d8" />
             </LineChart>
             </ResponsiveContainer>
       </Paper>

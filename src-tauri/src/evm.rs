@@ -1,8 +1,16 @@
 use crate::db::{DbResult, SqlitePool};
-use chrono::{Datelike, Duration, NaiveDate};
-use serde::Serialize;
+use chrono::{Datelike, Duration, NaiveDate, Weekday};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::collections::BTreeMap;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum Granularity {
+    Daily,
+    Weekly,
+    Monthly,
+}
 
 #[derive(Debug, Serialize, FromRow, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -104,9 +112,22 @@ pub async fn calculate_evm_kpis(
     Ok(EvmKpis { bac, pv, ev, ac, cpi, spi })
 }
 
+fn end_of_month(date: NaiveDate) -> NaiveDate {
+    let next_month_start = if date.month() == 12 {
+        date.with_year(date.year() + 1)
+            .unwrap()
+            .with_month(1)
+            .unwrap()
+    } else {
+        date.with_month(date.month() + 1).unwrap()
+    };
+    next_month_start.with_day(1).unwrap() - Duration::days(1)
+}
+
 pub async fn calculate_s_curve_data(
     pool: &SqlitePool,
     plan_version_id: i64,
+    granularity: Granularity,
 ) -> DbResult<Vec<SCurveDataPoint>> {
     let range: Option<(Option<NaiveDate>, Option<NaiveDate>)> = sqlx::query_as(
         r#"
@@ -149,22 +170,44 @@ pub async fn calculate_s_curve_data(
     }
     
     let mut results = Vec::new();
-    let mut current_month_start = start_date.with_day(1).unwrap();
+    let mut date_points = Vec::<NaiveDate>::new();
+    let mut current_date = start_date;
 
-    while current_month_start <= end_date {
-        let next_month_start = (current_month_start + Duration::days(32)).with_day(1).unwrap();
-        let report_date = next_month_start - Duration::days(1);
-        let final_report_date = if report_date > end_date { end_date } else { report_date };
+    match granularity {
+        Granularity::Daily => {
+            while current_date <= end_date {
+                date_points.push(current_date);
+                current_date += Duration::days(1);
+            }
+        }
+        Granularity::Weekly => {
+            while current_date <= end_date {
+                let end_of_week = current_date + Duration::days(6 - current_date.weekday().num_days_from_sunday() as i64);
+                date_points.push(if end_of_week > end_date { end_date } else { end_of_week });
+                current_date = end_of_week + Duration::days(1);
+            }
+        }
+        Granularity::Monthly => {
+            while current_date <= end_date {
+                let end_of_month = end_of_month(current_date);
+                date_points.push(if end_of_month > end_date { end_date } else { end_of_month });
+                current_date = end_of_month + Duration::days(1);
+            }
+        }
+    }
+    date_points.sort();
+    date_points.dedup();
 
-        let cumulative_pv = all_allocations.iter().filter(|(d, _)| *d <= final_report_date).map(|(_, pv)| pv).sum();
-        let cumulative_ac = all_costs.iter().filter(|(d, _)| *d <= final_report_date).map(|(_, ac)| ac).sum();
+    for report_date in date_points {
+        let cumulative_pv: f64 = all_allocations.iter().filter(|(d, _)| *d <= report_date).map(|(_, pv)| pv).sum();
+        let cumulative_ac: f64 = all_costs.iter().filter(|(d, _)| *d <= report_date).map(|(_, ac)| ac).sum();
 
         let mut cumulative_ev = 0.0;
         for activity in &all_activities {
             let activity_bac = activity.estimated_pv.unwrap_or(0.0);
             if activity_bac > 0.0 {
                 let latest_progress = progress_map
-                    .range(..=((activity.wbs_element_id, final_report_date)))
+                    .range(..=((activity.wbs_element_id, report_date)))
                     .filter(|((wbs_id, _), _)| *wbs_id == activity.wbs_element_id)
                     .last()
                     .map(|(_, &percent)| percent);
@@ -176,13 +219,14 @@ pub async fn calculate_s_curve_data(
         }
 
         results.push(SCurveDataPoint {
-            date: current_month_start.format("%Y-%m").to_string(),
+            date: report_date.format(match granularity {
+                Granularity::Monthly => "%Y-%m",
+                _ => "%Y-%m-%d",
+            }).to_string(),
             cumulative_pv,
             cumulative_ac,
             cumulative_ev,
         });
-
-        current_month_start = next_month_start;
     }
 
     Ok(results)
