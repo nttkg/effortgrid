@@ -189,7 +189,7 @@ const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
                             const total = dailyTotals[userId]?.[dateStr] || 0;
                             const isOverloaded = total > capacity;
                             return (
-                                <Table.Td key={dateStr} className={isOverloaded ? classes.overload_cell : ''}>
+                                <Table.Td key={dateStr} style={{ color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined }}>
                                     {total > 0 ? total.toFixed(1) : ''}
                                 </Table.Td>
                             );
