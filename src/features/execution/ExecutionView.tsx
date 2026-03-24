@@ -197,7 +197,7 @@ const GridRow = ({
     }, 0);
   };
 
-  const { nodeTotalEstimated, nodeTotalActuals } = useMemo(() => {
+  const { nodeTotalAllocated, nodeTotalActuals } = useMemo(() => {
     const getDescendantActivityIds = (startNode: TreeNode): number[] => {
         let ids: number[] = [];
         const stack: TreeNode[] = [startNode];
@@ -210,17 +210,16 @@ const GridRow = ({
     };
     const activityIds = getDescendantActivityIds(node);
 
-    const totalEstimated = activityIds.reduce((sum, id) => {
-        const element = allElements.find(el => el.wbsElementId === id);
-        return sum + (element?.estimatedPv || 0);
-    }, 0);
+    const totalAllocated = allPlanAllocations
+        .filter(alloc => activityIds.includes(alloc.wbsElementId))
+        .reduce((sum, alloc) => sum + alloc.plannedValue, 0);
 
     const totalActuals = allPlanActuals
         .filter(ac => activityIds.includes(ac.wbsElementId))
         .reduce((sum, ac) => sum + ac.actualCost, 0);
         
-    return { nodeTotalEstimated: totalEstimated, nodeTotalActuals: totalActuals };
-  }, [node, allElements, allPlanActuals]);
+    return { nodeTotalAllocated: totalAllocated, nodeTotalActuals: totalActuals };
+  }, [node, allPlanAllocations, allPlanActuals]);
 
   const userTotalAllocated = (userId: number) => {
       return allPlanAllocations
@@ -272,7 +271,7 @@ const GridRow = ({
           </Group>
         </Table.Td>
         <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-          <Text size="sm" c="dimmed">{nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : ''}</Text>
+          <Text size="sm" c="dimmed">{nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : ''}</Text>
         </Table.Td>
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
