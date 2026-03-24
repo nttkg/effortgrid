@@ -1,5 +1,5 @@
 use crate::db::{
-    self, ActualCost, ActualCostBulkItem, DailyAllocationBulkItem, PlanMilestone, PlanVersion,
+    self, ActualCost, ActualCostBulkItem, DailyAllocationBulkItem, PlanVersion,
     Portfolio, ProgressUpdate, PvAllocation, SqlitePool, User, WbsElementDetail,
 };
 use crate::evm;

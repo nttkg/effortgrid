@@ -348,15 +348,10 @@ const GridRow = ({
           </Group>
         </Table.Td>
 
-        {days.map((day) => (
-          <Table.Td key={day.format('YYYY-MM-DD')} className={isActivity ? classes.activity_rollup_cell : classes.rollup_cell}>
-            {getRollupValue(day.format('YYYY-MM-DD')) > 0 ? getRollupValue(day.format('YYYY-MM-DD')).toFixed(1) : '-'}
-          </Table.Td>
-        ))}
-        <Table.Td className={classes.sticky_col_data}>{isActivity ? node.estimatedPv || '-' : (nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : '-')}</Table.Td>
+        <Table.Td className={classes.sticky_col_data} style={{ width: '6rem', minWidth: '6rem' }}>{isActivity ? node.estimatedPv || '-' : (nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : '-')}</Table.Td>
         <Table.Td 
             className={classes.sticky_col_data}
-            style={{ color: nodeTotalAllocated > nodeTotalEstimated ? 'var(--mantine-color-red-7)' : undefined }}
+            style={{ color: nodeTotalAllocated > nodeTotalEstimated ? 'var(--mantine-color-red-7)' : undefined, width: '6rem', minWidth: '6rem' }}
         >
             {nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : '-'}
         </Table.Td>
@@ -381,8 +376,8 @@ const GridRow = ({
                 <Text size="xs">{isUnassigned ? 'Unassigned' : (user?.name || `User ${userId}`)}</Text>
               </Group>
             </Table.Td>
-            <Table.Td className={classes.sticky_col_data}></Table.Td>
-            <Table.Td className={classes.sticky_col_data}>
+            <Table.Td className={classes.sticky_col_data} style={{ width: '6rem', minWidth: '6rem' }}></Table.Td>
+            <Table.Td className={classes.sticky_col_data} style={{ width: '6rem', minWidth: '6rem' }}>
                 {userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : '-'}
             </Table.Td>
 
@@ -881,8 +876,8 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th className={classes.sticky_col_header}>WBS Element</Table.Th>
-                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-1)'}}>Est. PV</Table.Th>
-                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-2)'}}>Allocated</Table.Th>
+                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-1)', width: '6rem', minWidth: '6rem'}}>Est. PV</Table.Th>
+                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-2)', width: '6rem', minWidth: '6rem'}}>Allocated</Table.Th>
                 {daysInMonth.map((day) => {
                   const isWeekend = day.day() === 0 || day.day() === 6;
                   return (

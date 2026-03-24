@@ -132,17 +132,6 @@ pub struct User {
 
 #[derive(Debug, Serialize, FromRow, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlanMilestone {
-    pub id: i64,
-    pub plan_version_id: i64,
-    pub milestone_id: i64,
-    pub name: String,
-    pub target_date: NaiveDate,
-    pub is_deleted: bool,
-}
-
-#[derive(Debug, Serialize, FromRow, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PvAllocation {
     pub id: i64,
     pub plan_version_id: i64,

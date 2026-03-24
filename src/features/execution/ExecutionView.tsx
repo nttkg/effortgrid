@@ -73,6 +73,86 @@ const AcInputCell = ({ wbsElementId, userId, date, initialAc, onCommit, isReadOn
   );
 };
 
+const ResourceCapacityFooter = ({ users, elements, data, daysInMonth }: {
+    users: User[];
+    elements: WbsElementDetail[];
+    data: ExecutionMap;
+    daysInMonth: dayjs.Dayjs[];
+}) => {
+    const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+
+    const dailyTotals = useMemo(() => {
+        const totals: { [userId: number]: { [date: string]: number } } = {};
+        const activityIds = new Set(elements.filter(e => e.elementType === 'Activity').map(e => e.wbsElementId));
+
+        for (const wbsIdStr in data) {
+            const wbsId = Number(wbsIdStr);
+            if (!activityIds.has(wbsId)) continue;
+
+            const userEntries = data[wbsId];
+            for (const userIdStr in userEntries) {
+                const userId = Number(userIdStr);
+                if (userId === 0) continue; // Skip unassigned for capacity check
+
+                if (!totals[userId]) totals[userId] = {};
+                
+                const dateEntries = userEntries[userId];
+                for (const date in dateEntries) {
+                    if (!totals[userId][date]) totals[userId][date] = 0;
+                    totals[userId][date] += dateEntries[date].ac?.value || 0;
+                }
+            }
+        }
+        return totals;
+    }, [data, elements]);
+
+    const activeUserIds = useMemo(() => Object.keys(dailyTotals).map(Number).sort((a, b) => a - b), [dailyTotals]);
+
+    if (activeUserIds.length === 0) return null;
+    
+    return (
+        <Table.Tfoot>
+            <Table.Tr>
+                <Table.Th className={classes.sticky_col_header} style={{ top: 'var(--table-header-height)' }}>Resource Capacity (Actuals)</Table.Th>
+                <Table.Th colSpan={daysInMonth.length}></Table.Th>
+                <Table.Th></Table.Th>
+            </Table.Tr>
+            {activeUserIds.map(userId => {
+                const user = userMap.get(userId);
+                const capacity = user?.dailyCapacity ?? 8.0; // Default capacity
+                if (!user) return null;
+
+                const totalForMonth = daysInMonth.reduce((sum, day) => {
+                    return sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0);
+                }, 0);
+
+                return (
+                    <Table.Tr key={userId}>
+                        <Table.Td className={classes.sticky_col}>
+                            <Group gap="xs">
+                                <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
+                                <Text size="xs">{user.name}</Text>
+                            </Group>
+                        </Table.Td>
+
+                        {daysInMonth.map(day => {
+                            const dateStr = day.format('YYYY-MM-DD');
+                            const total = dailyTotals[userId]?.[dateStr] || 0;
+                            const isOverloaded = total > capacity;
+                            return (
+                                <Table.Td key={dateStr} className={isOverloaded ? classes.overload_cell : ''} style={{textAlign: 'right'}}>
+                                    {total > 0 ? total.toFixed(1) : ''}
+                                </Table.Td>
+                            );
+                        })}
+                        <Table.Td style={{textAlign: 'right'}}>{totalForMonth > 0 ? totalForMonth.toFixed(1) : ''}</Table.Td>
+                    </Table.Tr>
+                );
+            })}
+        </Table.Tfoot>
+    );
+};
+
 const GridRow = ({ 
     node, level, days, data, allElements, users, assignedUsersMap,
     onAcChange, isReadOnly, onAddUser,
@@ -708,6 +788,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                 />
               )}
             </Table.Tbody>
+            <ResourceCapacityFooter users={users} elements={elements} data={executionData} daysInMonth={daysInMonth} />
           </Table>
         </Box>
       )}
