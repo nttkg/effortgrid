@@ -26,12 +26,12 @@ interface GridProps {
 const getBadgeColor = (type: WbsElementType) => ({ Project: 'blue', WorkPackage: 'cyan', Activity: 'teal' }[type] || 'gray');
 
 // --- Sub-components ---
-const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
-  wbsElementId: number; date: string; pv?: number; initialAc?: number; isReadOnly: boolean;
+const AcInputCell = ({ wbsElementId, date, initialAc, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
+  wbsElementId: number; date: string; initialAc?: number; isReadOnly: boolean;
   onCommit: (value: number | null) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
-  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseDown: (e: React.MouseEvent<HTMLInputElement>) => void;
   onMouseOver: () => void;
   isSelected: boolean;
 }) => {
@@ -45,45 +45,28 @@ const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, 
   };
 
   return (
-    <Stack gap={0} justify="stretch" style={{ height: '100%', cursor: 'cell' }} onMouseDown={onMouseDown} onMouseOver={onMouseOver}>
-      <Box
-        style={{
-          flex: 1,
-          padding: '2px 4px',
-          backgroundColor: isSelected ? 'var(--mantine-color-blue-light-hover)' : 'var(--mantine-color-gray-0)',
-          borderBottom: '1px solid var(--mantine-color-gray-2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-        }}
-      >
-        <Text size="xs" c="dimmed">
-          PV: {pv != null ? pv.toFixed(1) : '-'}
-        </Text>
-      </Box>
-      <NumberInput
-        id={`cell-ac-${wbsElementId}-${date}`}
-        classNames={{ input: classes.ac_input }}
-        styles={{
-          wrapper: { flex: 1, display: 'flex' },
-          input: { 
-            height: '100%', 
-            flex: 1,
-            backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
-            textAlign: 'right',
-            paddingRight: 'var(--mantine-spacing-xs)',
-          }
-        }}
-        value={value}
-        onChange={setValue}
-        onBlur={handleBlur}
-        onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
-        onPaste={(e) => onPaste(e, wbsElementId, date)}
-        step={0.1} min={0} hideControls
-        readOnly={isReadOnly}
-        variant="unstyled"
-      />
-    </Stack>
+    <NumberInput
+      id={`cell-ac-${wbsElementId}-${date}`}
+      classNames={{ input: classes.ac_input }}
+      style={{
+        backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
+        height: '100%',
+      }}
+      styles={{
+        wrapper: { height: '100%' },
+        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)' }
+      }}
+      value={value}
+      onChange={setValue}
+      onBlur={handleBlur}
+      onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
+      onPaste={(e) => onPaste(e, wbsElementId, date)}
+      onMouseDown={onMouseDown}
+      onMouseOver={onMouseOver}
+      step={0.1} min={0} hideControls
+      readOnly={isReadOnly}
+      variant="unstyled"
+    />
   );
 };
 
@@ -93,7 +76,7 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
   isReadOnly: boolean;
   onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
-  onCellMouseDown: (e: React.MouseEvent<HTMLDivElement>, wbsElementId: number, date: string) => void;
+  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onCellMouseOver: (wbsElementId: number, date: string) => void;
   selectedCells: Set<string>;
 }) => {
@@ -119,23 +102,50 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
   const totalAcForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'ac'), 0), [days, data, activityDescendants]);
 
   const isActivity = node.elementType === 'Activity';
-  const tdStyle = isActivity ? { verticalAlign: 'middle' } : {};
 
-  return (
-    <>
-      <Table.Tr>
-        <Table.Td className={classes.sticky_col} style={tdStyle}>
-          <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
-        </Table.Td>
-        {days.map((day) => {
-          const dateStr = day.format('YYYY-MM-DD');
-          const cellId = `cell-ac-${node.wbsElementId}-${dateStr}`;
-          return (
-            <Table.Td key={dateStr} className={classes.data_cell} style={isActivity ? { padding: 0 } : {}}>
-              {isActivity ? (
+  if (isActivity) {
+    const totalPvForActivity = useMemo(() => {
+        return days.reduce((total, day) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            return total + (data[node.wbsElementId]?.[dateStr]?.pv || 0);
+        }, 0);
+    }, [days, data, node.wbsElementId]);
+
+    const totalAcForActivity = useMemo(() => {
+        return days.reduce((total, day) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            return total + (data[node.wbsElementId]?.[dateStr]?.ac?.value || 0);
+        }, 0);
+    }, [days, data, node.wbsElementId]);
+
+    return (
+      <>
+        {/* PV Row */}
+        <Table.Tr>
+          <Table.Td rowSpan={2} className={classes.sticky_col} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
+            <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
+          </Table.Td>
+          {days.map((day) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            return (
+              <Table.Td key={`${dateStr}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[dateStr]?.pv?.toFixed(1) ?? ''}</Text>
+              </Table.Td>
+            );
+          })}
+          <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+            <Text size="sm" c="dimmed">{totalPvForActivity > 0 ? totalPvForActivity.toFixed(1) : ''}</Text>
+          </Table.Td>
+        </Table.Tr>
+        {/* AC Row */}
+        <Table.Tr>
+          {days.map((day) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            const cellId = `cell-ac-${node.wbsElementId}-${dateStr}`;
+            return (
+              <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: 0, borderTop: 'none' }}>
                 <AcInputCell
                   wbsElementId={node.wbsElementId} date={dateStr}
-                  pv={data[node.wbsElementId]?.[dateStr]?.pv}
                   initialAc={data[node.wbsElementId]?.[dateStr]?.ac?.value}
                   onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
                   isReadOnly={isReadOnly}
@@ -144,16 +154,36 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
                   onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
                   isSelected={selectedCells.has(cellId)}
                 />
-              ) : (
+              </Table.Td>
+            );
+          })}
+          <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
+            <Text size="sm" fw={500}>{totalAcForActivity > 0 ? totalAcForActivity.toFixed(1) : ''}</Text>
+          </Table.Td>
+        </Table.Tr>
+      </>
+    );
+  }
+
+  // Non-Activity Row (Project, WorkPackage)
+  return (
+    <>
+      <Table.Tr>
+        <Table.Td className={classes.sticky_col}>
+          <Group gap="xs" style={{ paddingLeft: level * 20 }}><Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge><Text size="sm" truncate>{node.title}</Text></Group>
+        </Table.Td>
+        {days.map((day) => {
+          const dateStr = day.format('YYYY-MM-DD');
+          return (
+            <Table.Td key={dateStr} className={classes.data_cell}>
                 <div className={classes.rollup_cell}>
                   <Text size="xs" c="dimmed">PV: {getRollupValue(dateStr, 'pv') > 0 ? getRollupValue(dateStr, 'pv').toFixed(1) : '-'}</Text>
                   <Text size="sm" fw={500}>AC: {getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : '-'}</Text>
                 </div>
-              )}
             </Table.Td>
           );
         })}
-        <Table.Td className={classes.summary_col} style={tdStyle}>
+        <Table.Td className={classes.summary_col}>
           <Text size="xs" c="dimmed">PV: {totalPvForMonth.toFixed(1)}</Text>
           <Text size="sm" fw={500}>AC: {totalAcForMonth.toFixed(1)}</Text>
         </Table.Td>
@@ -264,7 +294,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   
   const focusCell = (wbsElementId: number, date: string) => document.getElementById(`cell-ac-${wbsElementId}-${date}`)?.focus();
 
-  const handleCellMouseDown = (e: React.MouseEvent, wbsElementId: number, date: string) => {
+  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
     e.preventDefault();
     setIsSelecting(true);
     const cellId = `cell-ac-${wbsElementId}-${date}`;
