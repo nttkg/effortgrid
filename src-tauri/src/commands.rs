@@ -122,6 +122,7 @@ pub struct AddProgressUpdatePayload {
 pub struct GetEvmKpisPayload {
     plan_version_id: i64,
     date: NaiveDate,
+    target_wbs_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +130,7 @@ pub struct GetEvmKpisPayload {
 pub struct GetSCurveDataPayload {
     plan_version_id: i64,
     granularity: evm::Granularity,
+    target_wbs_id: Option<i64>,
 }
 
 
@@ -425,7 +427,8 @@ pub async fn get_evm_kpis(
     pool: State<'_, SqlitePool>,
     payload: GetEvmKpisPayload,
 ) -> AppResult<evm::EvmKpis> {
-    let kpis = evm::calculate_evm_kpis(&pool, payload.plan_version_id, payload.date).await?;
+    let kpis =
+        evm::calculate_evm_kpis(&pool, payload.plan_version_id, payload.date, payload.target_wbs_id).await?;
     Ok(kpis)
 }
 
@@ -434,7 +437,21 @@ pub async fn get_s_curve_data(
     pool: State<'_, SqlitePool>,
     payload: GetSCurveDataPayload,
 ) -> AppResult<Vec<evm::SCurveDataPoint>> {
-    let data =
-        evm::calculate_s_curve_data(&pool, payload.plan_version_id, payload.granularity).await?;
+    let data = evm::calculate_s_curve_data(
+        &pool,
+        payload.plan_version_id,
+        payload.granularity,
+        payload.target_wbs_id,
+    )
+    .await?;
     Ok(data)
+}
+
+#[tauri::command]
+pub async fn get_filterable_wbs_nodes(
+    pool: State<'_, SqlitePool>,
+    plan_version_id: i64,
+) -> AppResult<Vec<WbsElementDetail>> {
+    let nodes = db::get_filterable_wbs_nodes(&pool, plan_version_id).await?;
+    Ok(nodes)
 }

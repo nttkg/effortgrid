@@ -429,6 +429,38 @@ pub async fn delete_pv_allocation(pool: &SqlitePool, id: i64) -> DbResult<u64> {
     Ok(rows_affected)
 }
 
+pub async fn get_descendant_wbs_element_ids(pool: &SqlitePool, plan_version_id: i64, root_wbs_id: i64) -> DbResult<Vec<i64>> {
+    let ids: Vec<(i64,)> = sqlx::query_as(
+        r#"
+        WITH RECURSIVE descendants(id) AS (
+            VALUES(?)
+            UNION
+            SELECT wed.wbs_element_id
+            FROM wbs_element_details wed
+            JOIN descendants ON wed.parent_element_id = descendants.id
+            WHERE wed.plan_version_id = ?
+        )
+        SELECT id FROM descendants
+        "#,
+    )
+    .bind(root_wbs_id)
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(ids.into_iter().map(|(id,)| id).collect())
+}
+
+pub async fn get_filterable_wbs_nodes(pool: &SqlitePool, plan_version_id: i64) -> DbResult<Vec<WbsElementDetail>> {
+    let nodes = sqlx::query_as(
+        "SELECT * FROM wbs_element_details WHERE plan_version_id = ? AND element_type IN ('Project', 'WorkPackage') AND is_deleted = false ORDER BY id"
+    )
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(nodes)
+}
+
 pub async fn create_baseline(pool: &SqlitePool, project_id: i64, baseline_name: &str) -> DbResult<PlanVersion> {
     let mut tx = pool.begin().await?;
 

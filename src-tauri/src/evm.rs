@@ -1,4 +1,4 @@
-use crate::db::{DbResult, SqlitePool};
+use crate::db::{self, DbResult, SqlitePool};
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -46,23 +46,56 @@ struct ProgressInfo {
     progress_percent: f64,
 }
 
+async fn get_filtered_activity_ids(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+    target_wbs_id: Option<i64>,
+) -> DbResult<Vec<i64>> {
+    let wbs_ids_to_filter = if let Some(root_id) = target_wbs_id {
+        db::get_descendant_wbs_element_ids(pool, plan_version_id, root_id).await?
+    } else {
+        let all_ids: Vec<(i64,)> =
+            sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ?")
+                .bind(plan_version_id)
+                .fetch_all(pool)
+                .await?;
+        all_ids.into_iter().map(|(id,)| id).collect()
+    };
+
+    let ids_json =
+        serde_json::to_string(&wbs_ids_to_filter).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+    let activity_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND element_type = 'Activity' AND wbs_element_id IN (SELECT value FROM json_each(?))"
+    )
+    .bind(plan_version_id)
+    .bind(ids_json)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(activity_ids.into_iter().map(|(id,)| id).collect())
+}
+
 pub async fn calculate_evm_kpis(
     pool: &SqlitePool,
     plan_version_id: i64,
     up_to_date: NaiveDate,
+    target_wbs_id: Option<i64>,
 ) -> DbResult<EvmKpis> {
-    let activities = sqlx::query_as::<_, ActivityInfo>(
-        r#"
-        SELECT wbs_element_id, estimated_pv 
-        FROM wbs_element_details 
-        WHERE plan_version_id = ? AND element_type = 'Activity' AND is_deleted = false
-        "#,
+    let activity_ids = get_filtered_activity_ids(pool, plan_version_id, target_wbs_id).await?;
+    if activity_ids.is_empty() {
+        return Ok(EvmKpis::default());
+    }
+
+    let activity_ids_json =
+        serde_json::to_string(&activity_ids).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+
+    let activities: Vec<ActivityInfo> = sqlx::query_as(
+        "SELECT wbs_element_id, estimated_pv FROM wbs_element_details WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))",
     )
     .bind(plan_version_id)
+    .bind(&activity_ids_json)
     .fetch_all(pool)
     .await?;
-
-    let activity_ids: Vec<i64> = activities.iter().map(|a| a.wbs_element_id).collect();
     let activity_ids_json = serde_json::to_string(&activity_ids)
         .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
@@ -131,20 +164,28 @@ pub async fn calculate_s_curve_data(
     pool: &SqlitePool,
     plan_version_id: i64,
     granularity: Granularity,
+    target_wbs_id: Option<i64>,
 ) -> DbResult<Vec<SCurveDataPoint>> {
+    let activity_ids = get_filtered_activity_ids(pool, plan_version_id, target_wbs_id).await?;
+    if activity_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    
+    let activity_ids_json =
+        serde_json::to_string(&activity_ids).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+
     let range: Option<(Option<NaiveDate>, Option<NaiveDate>)> = sqlx::query_as(
         r#"
         SELECT MIN(t.d), MAX(t.d) FROM (
-            SELECT start_date as d FROM pv_allocations WHERE plan_version_id = ?
+            SELECT start_date as d FROM pv_allocations WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))
             UNION ALL
-            SELECT work_date as d FROM actual_costs ac
-            JOIN wbs_element_details wed ON ac.wbs_element_id = wed.wbs_element_id
-            WHERE wed.plan_version_id = ?
+            SELECT work_date as d FROM actual_costs WHERE wbs_element_id IN (SELECT value FROM json_each(?))
         ) as t
         "#,
     )
     .bind(plan_version_id)
-    .bind(plan_version_id)
+    .bind(&activity_ids_json)
+    .bind(&activity_ids_json)
     .fetch_optional(pool)
     .await?;
 
@@ -153,19 +194,21 @@ pub async fn calculate_s_curve_data(
         _ => return Ok(vec![]),
     };
 
-    let all_activities = sqlx::query_as::<_, ActivityInfo>(
-        "SELECT wbs_element_id, estimated_pv FROM wbs_element_details WHERE plan_version_id = ? AND element_type = 'Activity' AND is_deleted = false",
+    let all_activities: Vec<ActivityInfo> = sqlx::query_as(
+        "SELECT wbs_element_id, estimated_pv FROM wbs_element_details WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))",
     )
     .bind(plan_version_id)
+    .bind(&activity_ids_json)
     .fetch_all(pool)
     .await?;
-    
+
     let bac: f64 = all_activities.iter().filter_map(|a| a.estimated_pv).sum();
 
-    let activity_ids: Vec<i64> = all_activities.iter().map(|a| a.wbs_element_id).collect();
-    let activity_ids_json = serde_json::to_string(&activity_ids).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-
-    let all_allocations: Vec<(NaiveDate, f64)> = sqlx::query_as("SELECT end_date, planned_value FROM pv_allocations WHERE plan_version_id = ?").bind(plan_version_id).fetch_all(pool).await?;
+    let all_allocations: Vec<(NaiveDate, f64)> = sqlx::query_as("SELECT end_date, planned_value FROM pv_allocations WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))")
+        .bind(plan_version_id)
+        .bind(&activity_ids_json)
+        .fetch_all(pool)
+        .await?;
     let all_costs: Vec<(NaiveDate, f64)> = sqlx::query_as("SELECT work_date, actual_cost FROM actual_costs WHERE wbs_element_id IN (SELECT value FROM json_each(?))").bind(&activity_ids_json).fetch_all(pool).await?;
     let all_progress: Vec<(i64, NaiveDate, f64)> = sqlx::query_as("SELECT wbs_element_id, report_date, progress_percent FROM progress_updates WHERE wbs_element_id IN (SELECT value FROM json_each(?)) ORDER BY report_date ASC, id ASC").bind(&activity_ids_json).fetch_all(pool).await?;
     

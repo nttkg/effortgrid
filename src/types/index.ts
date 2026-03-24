@@ -76,3 +76,14 @@ export interface SCurveDataPoint {
   plannedEtc: number;
   actualEtc: number;
 }
+
+export type Granularity = 'daily' | 'weekly' | 'monthly';
+export type ChartType = 'SCurve' | 'EvEtcArea';
+
+export interface WidgetConfig {
+  id: string;
+  title: string;
+  chartType: ChartType;
+  granularity: Granularity;
+  targetWbsId: number | null;
+}

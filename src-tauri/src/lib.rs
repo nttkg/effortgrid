@@ -41,7 +41,8 @@ pub fn run() {
             commands::add_progress_update,
             commands::get_progress_updates_for_element,
             commands::get_evm_kpis,
-            commands::get_s_curve_data
+            commands::get_s_curve_data,
+            commands::get_filterable_wbs_nodes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
