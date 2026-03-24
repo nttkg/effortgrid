@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 pub use sqlx::SqlitePool;
 use sqlx::FromRow;
@@ -81,6 +82,18 @@ pub struct WbsElementDetail {
     pub estimated_pv: Option<f64>,
     pub tags: Option<String>,
     pub is_deleted: bool,
+}
+
+#[derive(Debug, Serialize, FromRow, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PvAllocation {
+    pub id: i64,
+    pub plan_version_id: i64,
+    pub wbs_element_id: i64,
+    pub user_id: Option<i64>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub planned_value: f64,
 }
 
 
@@ -233,5 +246,75 @@ pub async fn update_wbs_element_pv(
         .await?
         .rows_affected();
 
+    Ok(rows_affected)
+}
+
+// ----- PV Allocations -----
+
+pub async fn list_pv_allocations_for_wbs_element(
+    pool: &SqlitePool,
+    wbs_element_id: i64,
+    plan_version_id: i64,
+) -> DbResult<Vec<PvAllocation>> {
+    let allocations = sqlx::query_as::<_, PvAllocation>(
+        "SELECT * FROM pv_allocations WHERE wbs_element_id = ? AND plan_version_id = ?",
+    )
+    .bind(wbs_element_id)
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(allocations)
+}
+
+pub async fn add_pv_allocation(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+    wbs_element_id: i64,
+    user_id: Option<i64>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    planned_value: f64,
+) -> DbResult<PvAllocation> {
+    let id = sqlx::query(
+        "INSERT INTO pv_allocations (plan_version_id, wbs_element_id, user_id, start_date, end_date, planned_value) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(plan_version_id).bind(wbs_element_id).bind(user_id).bind(start_date).bind(end_date).bind(planned_value)
+    .execute(pool)
+    .await?
+    .last_insert_rowid();
+
+    let new_allocation = sqlx::query_as::<_, PvAllocation>("SELECT * FROM pv_allocations WHERE id = ?")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(new_allocation)
+}
+
+pub async fn update_pv_allocation(
+    pool: &SqlitePool,
+    id: i64,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    planned_value: f64,
+) -> DbResult<PvAllocation> {
+    sqlx::query("UPDATE pv_allocations SET start_date = ?, end_date = ?, planned_value = ? WHERE id = ?")
+        .bind(start_date)
+        .bind(end_date)
+        .bind(planned_value)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    let updated_allocation = sqlx::query_as::<_, PvAllocation>("SELECT * FROM pv_allocations WHERE id = ?")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+    Ok(updated_allocation)
+}
+
+pub async fn delete_pv_allocation(pool: &SqlitePool, id: i64) -> DbResult<u64> {
+    let rows_affected = sqlx::query("DELETE FROM pv_allocations WHERE id = ?").bind(id)
+        .execute(pool).await?.rows_affected();
     Ok(rows_affected)
 }

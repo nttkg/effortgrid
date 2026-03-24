@@ -1,4 +1,5 @@
-use crate::db::{self, PlanVersion, Project, SqlitePool, WbsElementDetail};
+use crate::db::{self, PlanVersion, Project, PvAllocation, SqlitePool, WbsElementDetail};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -45,6 +46,33 @@ pub struct AddWbsElementPayload {
 pub struct UpdateWbsElementPvPayload {
     id: i64,
     estimated_pv: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPvAllocationsPayload {
+    wbs_element_id: i64,
+    plan_version_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddPvAllocationPayload {
+    plan_version_id: i64,
+    wbs_element_id: i64,
+    user_id: Option<i64>,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    planned_value: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePvAllocationPayload {
+    id: i64,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    planned_value: f64,
 }
 
 // ----- Tauri Commands -----
@@ -125,5 +153,84 @@ pub async fn update_wbs_element_pv(
     }
 
     db::update_wbs_element_pv(&pool, payload.id, payload.estimated_pv).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_pv_allocations_for_wbs_element(
+    pool: State<'_, SqlitePool>,
+    payload: ListPvAllocationsPayload,
+) -> AppResult<Vec<PvAllocation>> {
+    let allocations = db::list_pv_allocations_for_wbs_element(
+        &pool,
+        payload.wbs_element_id,
+        payload.plan_version_id,
+    )
+    .await?;
+    Ok(allocations)
+}
+
+async fn check_is_activity(
+    pool: &SqlitePool,
+    wbs_element_id: i64,
+    plan_version_id: i64,
+) -> AppResult<()> {
+    let element_type: String =
+        sqlx::query_scalar("SELECT element_type FROM wbs_element_details WHERE wbs_element_id = ? AND plan_version_id = ?")
+            .bind(wbs_element_id)
+            .bind(plan_version_id)
+            .fetch_one(pool)
+            .await
+            .map_err(db::DbError::from)?;
+
+    if element_type == "Activity" {
+        Ok(())
+    } else {
+        Err(AppError::DbError(
+            "PV allocations can only be managed for 'Activity' elements.".to_string(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub async fn add_pv_allocation(
+    pool: State<'_, SqlitePool>,
+    payload: AddPvAllocationPayload,
+) -> AppResult<PvAllocation> {
+    check_is_activity(&pool, payload.wbs_element_id, payload.plan_version_id).await?;
+
+    let new_allocation = db::add_pv_allocation(
+        &pool,
+        payload.plan_version_id,
+        payload.wbs_element_id,
+        payload.user_id,
+        payload.start_date,
+        payload.end_date,
+        payload.planned_value,
+    )
+    .await?;
+    Ok(new_allocation)
+}
+
+#[tauri::command]
+pub async fn update_pv_allocation(
+    pool: State<'_, SqlitePool>,
+    payload: UpdatePvAllocationPayload,
+) -> AppResult<PvAllocation> {
+    // No need to check type on update, as it's an existing allocation linked to an activity.
+    let updated_allocation = db::update_pv_allocation(
+        &pool,
+        payload.id,
+        payload.start_date,
+        payload.end_date,
+        payload.planned_value,
+    )
+    .await?;
+    Ok(updated_allocation)
+}
+
+#[tauri::command]
+pub async fn delete_pv_allocation(pool: State<'_, SqlitePool>, id: i64) -> AppResult<()> {
+    db::delete_pv_allocation(&pool, id).await?;
     Ok(())
 }

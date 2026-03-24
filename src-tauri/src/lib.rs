@@ -27,7 +27,11 @@ pub fn run() {
             commands::list_wbs_elements,
             commands::list_projects,
             commands::list_plan_versions_for_project,
-            commands::update_wbs_element_pv
+            commands::update_wbs_element_pv,
+            commands::list_pv_allocations_for_wbs_element,
+            commands::add_pv_allocation,
+            commands::update_pv_allocation,
+            commands::delete_pv_allocation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -28,3 +28,13 @@ export interface WbsElementDetail {
   tags: string | null; // JSON string
   isDeleted: boolean;
 }
+
+export interface PvAllocation {
+  id: number;
+  planVersionId: number;
+  wbsElementId: number;
+  userId: number | null;
+  startDate: string; // "YYYY-MM-DD"
+  endDate: string; // "YYYY-MM-DD"
+  plannedValue: number;
+}
