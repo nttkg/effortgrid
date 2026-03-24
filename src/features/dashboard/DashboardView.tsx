@@ -23,6 +23,8 @@ import {
   Tooltip,
   Legend,
   Brush,
+  ComposedChart,
+  Bar,
 } from 'recharts';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { EvmKpis, SCurveDataPoint } from '../../types';
@@ -112,7 +114,7 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
         </SimpleGrid>
         <Paper withBorder p="md" radius="md" mt="md" style={{height: 400}}>
             <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={sCurveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <LineChart data={sCurveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }} syncId="sCurveSync">
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
@@ -124,6 +126,23 @@ export function DashboardView({ planVersionId }: DashboardViewProps) {
                 <Brush dataKey="date" height={30} stroke="#8884d8" />
             </LineChart>
             </ResponsiveContainer>
+      </Paper>
+
+      <Paper withBorder p="md" radius="md" mt="md" style={{height: 400}}>
+        <Title order={4} mb="md">Work Breakdown Forecast</Title>
+        <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={sCurveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }} syncId="sCurveSync">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="cumulativeEv" stackId="a" fill="#82ca9d" name="Earned Value (EV)" />
+                <Bar dataKey="actualEtc" stackId="a" fill="#4c6a85" name="ETC (Actual)" />
+                <Line type="monotone" dataKey="plannedEtc" stroke="#ff7300" strokeWidth={2} name="ETC (Planned)" dot={false}/>
+                <Brush dataKey="date" height={30} stroke="#8884d8" />
+            </ComposedChart>
+        </ResponsiveContainer>
       </Paper>
     </Stack>
   );

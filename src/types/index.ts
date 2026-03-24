@@ -72,4 +72,7 @@ export interface SCurveDataPoint {
   cumulativePv: number;
   cumulativeEv: number;
   cumulativeAc: number;
+  bac: number;
+  plannedEtc: number;
+  actualEtc: number;
 }

@@ -30,6 +30,9 @@ pub struct SCurveDataPoint {
     pub cumulative_pv: f64,
     pub cumulative_ev: f64,
     pub cumulative_ac: f64,
+    pub bac: f64,
+    pub planned_etc: f64,
+    pub actual_etc: f64,
 }
 
 #[derive(FromRow)]
@@ -157,6 +160,8 @@ pub async fn calculate_s_curve_data(
     .fetch_all(pool)
     .await?;
     
+    let bac: f64 = all_activities.iter().filter_map(|a| a.estimated_pv).sum();
+
     let activity_ids: Vec<i64> = all_activities.iter().map(|a| a.wbs_element_id).collect();
     let activity_ids_json = serde_json::to_string(&activity_ids).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
@@ -218,6 +223,9 @@ pub async fn calculate_s_curve_data(
             }
         }
 
+        let planned_etc = (bac - cumulative_pv).max(0.0);
+        let actual_etc = (bac - cumulative_ev).max(0.0);
+
         results.push(SCurveDataPoint {
             date: report_date.format(match granularity {
                 Granularity::Monthly => "%Y-%m",
@@ -226,6 +234,9 @@ pub async fn calculate_s_curve_data(
             cumulative_pv,
             cumulative_ac,
             cumulative_ev,
+            bac,
+            planned_etc,
+            actual_etc,
         });
     }
 
