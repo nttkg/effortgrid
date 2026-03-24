@@ -2,12 +2,12 @@
 -- These tables define the core, globally unique entities within the system.
 
 CREATE TABLE projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     name TEXT NOT NULL
 );
 
 CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     role TEXT
 );
@@ -17,13 +17,13 @@ CREATE TABLE users (
 -- This separates "what it is" from "what it was in a specific plan".
 
 CREATE TABLE wbs_elements (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, -- Global ID
+    id INTEGER PRIMARY KEY, -- Global ID
     project_id INTEGER NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE milestones (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, -- Global ID
+    id INTEGER PRIMARY KEY, -- Global ID
     project_id INTEGER NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
@@ -32,7 +32,7 @@ CREATE TABLE milestones (
 -- This table manages different versions or snapshots of a project plan.
 
 CREATE TABLE plan_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL,
     name TEXT NOT NULL, -- e.g., "Working Draft", "V1 Baseline"
     is_draft INTEGER NOT NULL CHECK(is_draft IN (0, 1)), -- SQLite boolean
@@ -44,7 +44,7 @@ CREATE TABLE plan_versions (
 -- When a baseline is created, records here are full-copied with a new plan_version_id.
 
 CREATE TABLE plan_milestones (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     plan_version_id INTEGER NOT NULL,
     milestone_id INTEGER NOT NULL, -- Global ID
     name TEXT NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE plan_milestones (
 );
 
 CREATE TABLE wbs_element_details (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     plan_version_id INTEGER NOT NULL,
     wbs_element_id INTEGER NOT NULL, -- Global ID
     parent_element_id INTEGER, -- Refers to wbs_elements.id (Global ID), nullable for root
@@ -74,7 +74,7 @@ CREATE TABLE wbs_element_details (
 
 -- Time-phased allocation of Planned Value (PV)
 CREATE TABLE pv_allocations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     plan_version_id INTEGER NOT NULL,
     wbs_element_id INTEGER NOT NULL, -- Global ID
     user_id INTEGER, -- Nullable for unassigned tasks
@@ -92,7 +92,7 @@ CREATE TABLE pv_allocations (
 
 -- Actual Cost (AC) incurred
 CREATE TABLE actual_costs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     wbs_element_id INTEGER NOT NULL, -- Global ID
     user_id INTEGER NOT NULL,
     work_date TEXT NOT NULL, -- ISO8601 YYYY-MM-DD
@@ -104,7 +104,7 @@ CREATE TABLE actual_costs (
 
 -- Progress updates, the source for Earned Value (EV)
 CREATE TABLE progress_updates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     wbs_element_id INTEGER NOT NULL, -- Global ID
     reported_by_user_id INTEGER NOT NULL,
     report_date TEXT NOT NULL, -- ISO8601 YYYY-MM-DD
