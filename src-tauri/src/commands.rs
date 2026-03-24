@@ -442,6 +442,15 @@ pub async fn delete_pv_allocation(pool: State<'_, SqlitePool>, id: i64) -> AppRe
 }
 
 #[tauri::command]
+pub async fn list_all_allocations_for_plan_version(
+    pool: State<'_, SqlitePool>,
+    plan_version_id: i64,
+) -> AppResult<Vec<PvAllocation>> {
+    let allocations = db::list_all_allocations_for_plan_version(&pool, plan_version_id).await?;
+    Ok(allocations)
+}
+
+#[tauri::command]
 pub async fn list_allocations_for_period(
     pool: State<'_, SqlitePool>,
     payload: ListAllocationsForPeriodPayload,
@@ -630,6 +639,7 @@ pub struct UserPayload {
     name: String,
     role: String,
     email: Option<String>,
+    daily_capacity: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -639,11 +649,14 @@ pub struct UpdateUserPayload {
     name: String,
     role: String,
     email: Option<String>,
+    daily_capacity: Option<f64>,
 }
 
 #[tauri::command]
 pub async fn add_user(pool: State<'_, SqlitePool>, payload: UserPayload) -> AppResult<User> {
-    let new_user = db::add_user(&pool, &payload.name, &payload.role, payload.email.as_deref()).await?;
+    let new_user =
+        db::add_user(&pool, &payload.name, &payload.role, payload.email.as_deref(), payload.daily_capacity)
+            .await?;
     Ok(new_user)
 }
 
@@ -658,6 +671,7 @@ pub async fn update_user(
         &payload.name,
         &payload.role,
         payload.email.as_deref(),
+        payload.daily_capacity,
     )
     .await?;
     Ok(updated_user)

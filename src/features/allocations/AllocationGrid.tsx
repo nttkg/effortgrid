@@ -123,14 +123,100 @@ const PvInputCell = ({
   );
 };
 
+const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
+    users: User[];
+    elements: WbsElementDetail[];
+    allocations: AllocationMap;
+    daysInMonth: dayjs.Dayjs[];
+}) => {
+    const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+
+    const dailyTotals = useMemo(() => {
+        const totals: { [userId: number]: { [date: string]: number } } = {};
+        const activityIds = new Set(elements.filter(e => e.elementType === 'Activity').map(e => e.wbsElementId));
+
+        for (const wbsIdStr in allocations) {
+            const wbsId = Number(wbsIdStr);
+            if (!activityIds.has(wbsId)) continue;
+
+            const userAllocs = allocations[wbsId];
+            for (const userIdStr in userAllocs) {
+                const userId = Number(userIdStr);
+                if (userId === 0) continue; // Skip unassigned
+
+                if (!totals[userId]) totals[userId] = {};
+                
+                const dateAllocs = userAllocs[userId];
+                for (const date in dateAllocs) {
+                    if (!totals[userId][date]) totals[userId][date] = 0;
+                    totals[userId][date] += dateAllocs[date].pv;
+                }
+            }
+        }
+        return totals;
+    }, [allocations, elements]);
+
+    const activeUserIds = useMemo(() => Object.keys(dailyTotals).map(Number).sort((a,b) => a-b), [dailyTotals]);
+
+    if (activeUserIds.length === 0) return null;
+    
+    return (
+        <Table.Tfoot>
+            <Table.Tr>
+                <Table.Th className={classes.sticky_col_header} style={{ top: 'var(--table-header-height)' }}>Resource Capacity</Table.Th>
+                <Table.Th></Table.Th>
+                <Table.Th></Table.Th>
+                <Table.Th colSpan={daysInMonth.length}></Table.Th>
+                <Table.Th></Table.Th>
+            </Table.Tr>
+            {activeUserIds.map(userId => {
+                const user = userMap.get(userId);
+                const capacity = user?.dailyCapacity ?? 8.0; // Default capacity
+                if (!user) return null;
+
+                const totalForMonth = daysInMonth.reduce((sum, day) => {
+                    return sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0);
+                }, 0);
+
+                return (
+                    <Table.Tr key={userId}>
+                        <Table.Td className={classes.sticky_col}>
+                            <Group gap="xs">
+                                <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
+                                <Text size="xs">{user.name}</Text>
+                            </Group>
+                        </Table.Td>
+                        <Table.Td></Table.Td>
+                        <Table.Td></Table.Td>
+
+                        {daysInMonth.map(day => {
+                            const dateStr = day.format('YYYY-MM-DD');
+                            const total = dailyTotals[userId]?.[dateStr] || 0;
+                            const isOverloaded = total > capacity;
+                            return (
+                                <Table.Td key={dateStr} className={isOverloaded ? classes.overload_cell : ''}>
+                                    {total > 0 ? total.toFixed(1) : ''}
+                                </Table.Td>
+                            );
+                        })}
+                        <Table.Td>{totalForMonth > 0 ? totalForMonth.toFixed(1) : ''}</Table.Td>
+                    </Table.Tr>
+                );
+            })}
+        </Table.Tfoot>
+    );
+};
+
 const GridRow = ({
-  node, level, days, allocations, allElements, users, assignedUsersMap,
+  node, level, days, allElements, users, assignedUsersMap, allocations, allPlanAllocations,
   onPvChange, isReadOnly, onAddUser,
   onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells
 }: {
   node: TreeNode; level: number; days: dayjs.Dayjs[];
-  allocations: AllocationMap; allElements: WbsElementDetail[]; users: User[];
+  allElements: WbsElementDetail[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
+  allocations: AllocationMap;
+  allPlanAllocations: PvAllocation[];
   onPvChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
   isReadOnly: boolean;
   onAddUser: (wbsElementId: number, userId: number) => void;
@@ -144,6 +230,41 @@ const GridRow = ({
   const isActivity = node.elementType === 'Activity';
   const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
   const assignedUsers = useMemo(() => assignedUsersMap[node.wbsElementId] || new Set(), [assignedUsersMap, node.wbsElementId]);
+
+  // --- Total Calculation Logic ---
+  const { nodeTotalEstimated, nodeTotalAllocated } = useMemo(() => {
+      const getDescendantActivityIds = (startNode: TreeNode): number[] => {
+          let ids: number[] = [];
+          const stack: TreeNode[] = [startNode];
+          while (stack.length > 0) {
+              const currentNode = stack.pop()!;
+              if (currentNode.elementType === 'Activity') {
+                  ids.push(currentNode.wbsElementId);
+              }
+              currentNode.children.forEach(child => stack.push(child));
+          }
+          return ids;
+      };
+
+      const activityIds = getDescendantActivityIds(node);
+      
+      const totalEstimated = activityIds.reduce((sum, id) => {
+          const element = allElements.find(el => el.wbsElementId === id);
+          return sum + (element?.estimatedPv || 0);
+      }, 0);
+
+      const totalAllocated = allPlanAllocations
+          .filter(alloc => activityIds.includes(alloc.wbsElementId))
+          .reduce((sum, alloc) => sum + alloc.plannedValue, 0);
+
+      return { nodeTotalEstimated: totalEstimated, nodeTotalAllocated: totalAllocated };
+  }, [node, allElements, allPlanAllocations]);
+
+  const userTotalAllocated = (userId: number) => {
+      return allPlanAllocations
+          .filter(alloc => alloc.wbsElementId === node.wbsElementId && alloc.userId === userId)
+          .reduce((sum, alloc) => sum + alloc.plannedValue, 0);
+  };
   
   const hasUnassignedPv = useMemo(() => {
     const unassignedAllocs = allocations[node.wbsElementId]?.[0];
@@ -232,7 +353,19 @@ const GridRow = ({
             {getRollupValue(day.format('YYYY-MM-DD')) > 0 ? getRollupValue(day.format('YYYY-MM-DD')).toFixed(1) : '-'}
           </Table.Td>
         ))}
-        <Table.Td className={classes.summary_col}>{node.estimatedPv || '-'}</Table.Td>
+        <Table.Td className={classes.sticky_col_data}>{isActivity ? node.estimatedPv || '-' : (nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : '-')}</Table.Td>
+        <Table.Td 
+            className={classes.sticky_col_data}
+            style={{ color: nodeTotalAllocated > nodeTotalEstimated ? 'var(--mantine-color-red-7)' : undefined }}
+        >
+            {nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : '-'}
+        </Table.Td>
+        
+        {days.map((day) => (
+          <Table.Td key={day.format('YYYY-MM-DD')} className={isActivity ? classes.activity_rollup_cell : classes.rollup_cell}>
+            {getRollupValue(day.format('YYYY-MM-DD')) > 0 ? getRollupValue(day.format('YYYY-MM-DD')).toFixed(1) : '-'}
+          </Table.Td>
+        ))}
         <Table.Td className={classes.summary_col}>{totalForActivityMonth > 0 ? totalForActivityMonth.toFixed(1) : '-'}</Table.Td>
       </Table.Tr>
       
@@ -248,6 +381,11 @@ const GridRow = ({
                 <Text size="xs">{isUnassigned ? 'Unassigned' : (user?.name || `User ${userId}`)}</Text>
               </Group>
             </Table.Td>
+            <Table.Td className={classes.sticky_col_data}></Table.Td>
+            <Table.Td className={classes.sticky_col_data}>
+                {userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : '-'}
+            </Table.Td>
+
             {days.map((day) => {
               const dateStr = day.format('YYYY-MM-DD');
               const cellId = `cell-pv-${node.wbsElementId}-${userId}-${dateStr}`;
@@ -269,7 +407,6 @@ const GridRow = ({
                 </Table.Td>
               );
             })}
-            <Table.Td className={classes.summary_col}></Table.Td>
             <Table.Td className={classes.summary_col}>{totalForUserMonth(userId) > 0 ? totalForUserMonth(userId).toFixed(1) : '-'}</Table.Td>
           </Table.Tr>
         )
@@ -279,8 +416,10 @@ const GridRow = ({
       {node.children.map((child) => (
         <GridRow
           key={child.id} node={child} level={level + 1} days={days}
-          allocations={allocations} allElements={allElements} users={users}
+          allElements={allElements} users={users}
           assignedUsersMap={assignedUsersMap}
+          allocations={allocations}
+          allPlanAllocations={allPlanAllocations}
           onPvChange={onPvChange} isReadOnly={isReadOnly} onAddUser={onAddUser}
           onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste}
           onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver}
@@ -297,6 +436,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [allocations, setAllocations] = useState<AllocationMap>({});
+  const [allPlanAllocations, setAllPlanAllocations] = useState<PvAllocation[]>([]);
   const [assignedUsers, setAssignedUsers] = useState<{ [wbsId: number]: Set<number> }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,6 +466,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     if (!planVersionId) {
       setElements([]);
       setAllocations({});
+      setAllPlanAllocations([]);
       setAssignedUsers({});
       return;
     }
@@ -335,19 +476,21 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     const end = daysInMonth[daysInMonth.length - 1].format('YYYY-MM-DD');
 
     try {
-      const [wbs, allocs] = await Promise.all([
+      const [wbs, monthAllocs, allAllocs] = await Promise.all([
         invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId }),
         invoke<PvAllocation[]>('list_allocations_for_period', {
           payload: { planVersionId, startDate: start, endDate: end },
         }),
+        invoke<PvAllocation[]>('list_all_allocations_for_plan_version', { planVersionId }),
       ]);
 
       setElements(wbs);
+      setAllPlanAllocations(allAllocs);
 
       const allocMap: AllocationMap = {};
       const initialAssigned: { [wbsId: number]: Set<number> } = {};
 
-      for (const alloc of allocs) {
+      for (const alloc of monthAllocs) {
         const userId = alloc.userId ?? 0;
         if (!allocMap[alloc.wbsElementId]) {
           allocMap[alloc.wbsElementId] = {};
@@ -738,6 +881,8 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th className={classes.sticky_col_header}>WBS Element</Table.Th>
+                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-1)'}}>Est. PV</Table.Th>
+                <Table.Th className={classes.sticky_col_header} style={{left: 'var(--col-width-2)'}}>Allocated</Table.Th>
                 {daysInMonth.map((day) => {
                   const isWeekend = day.day() === 0 || day.day() === 6;
                   return (
@@ -749,7 +894,6 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                     </Table.Th>
                   );
                 })}
-                <Table.Th>Est. PV</Table.Th>
                 <Table.Th>Month Total</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -757,8 +901,10 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
               {tree.map(node => (
                 <GridRow
                     key={node.id} node={node} level={0} days={daysInMonth}
-                    allocations={allocations} allElements={elements} users={users}
+                    allElements={elements} users={users}
                     assignedUsersMap={assignedUsers}
+                    allocations={allocations}
+                    allPlanAllocations={allPlanAllocations}
                     onPvChange={handlePvChange} isReadOnly={isReadOnly}
                     onAddUser={handleAddUserToActivity}
                     onCellKeyDown={handleCellKeyDown}
@@ -769,6 +915,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                 />
               ))}
             </Table.Tbody>
+            <ResourceCapacityFooter users={users} elements={elements} allocations={allocations} daysInMonth={daysInMonth} />
           </Table>
         </Box>
       )}

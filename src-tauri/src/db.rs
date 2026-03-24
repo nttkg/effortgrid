@@ -127,6 +127,7 @@ pub struct User {
     pub name: String,
     pub role: String,
     pub email: Option<String>,
+    pub daily_capacity: Option<f64>,
 }
 
 #[derive(Debug, Serialize, FromRow, Clone, Deserialize)]
@@ -321,6 +322,19 @@ pub async fn update_wbs_element_pv(
         .rows_affected();
 
     Ok(rows_affected)
+}
+
+pub async fn list_all_allocations_for_plan_version(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+) -> DbResult<Vec<PvAllocation>> {
+    let allocations = sqlx::query_as::<_, PvAllocation>(
+        "SELECT * FROM pv_allocations WHERE plan_version_id = ?",
+    )
+    .bind(plan_version_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(allocations)
 }
 
 pub async fn list_allocations_for_period(
@@ -867,11 +881,13 @@ pub async fn add_user(
     name: &str,
     role: &str,
     email: Option<&str>,
+    daily_capacity: Option<f64>,
 ) -> DbResult<User> {
-    let id = sqlx::query("INSERT INTO users (name, role, email) VALUES (?, ?, ?)")
+    let id = sqlx::query("INSERT INTO users (name, role, email, daily_capacity) VALUES (?, ?, ?, ?)")
         .bind(name)
         .bind(role)
         .bind(email)
+        .bind(daily_capacity)
         .execute(pool)
         .await?
         .last_insert_rowid();
@@ -890,11 +906,13 @@ pub async fn update_user(
     name: &str,
     role: &str,
     email: Option<&str>,
+    daily_capacity: Option<f64>,
 ) -> DbResult<User> {
-    sqlx::query("UPDATE users SET name = ?, role = ?, email = ? WHERE id = ?")
+    sqlx::query("UPDATE users SET name = ?, role = ?, email = ?, daily_capacity = ? WHERE id = ?")
         .bind(name)
         .bind(role)
         .bind(email)
+        .bind(daily_capacity)
         .bind(id)
         .execute(pool)
         .await?;

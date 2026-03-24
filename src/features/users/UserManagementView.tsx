@@ -13,6 +13,7 @@ import {
   Center,
   Loader,
   Container,
+  NumberInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
@@ -26,6 +27,7 @@ const userSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   role: z.string().min(1, 'Role is required'),
   email: z.string().email('Invalid email address').nullable().or(z.literal('')),
+  dailyCapacity: z.preprocess(v => v === '' ? null : v, z.number().min(0, 'Capacity must be positive').nullable()),
 });
 
 export function UserManagementView() {
@@ -38,6 +40,7 @@ export function UserManagementView() {
       name: '',
       role: '',
       email: '',
+      dailyCapacity: 8,
     },
     validate: zodResolver(userSchema as any),
   });
@@ -45,12 +48,12 @@ export function UserManagementView() {
   const handleOpenModal = (user: User | null) => {
     setActiveUser(user);
     form.reset();
-    form.setValues(user ? { ...user, email: user.email || '' } : { name: '', role: '', email: '' });
+    form.setValues(user ? { ...user, email: user.email || '', dailyCapacity: user.dailyCapacity ?? 8 } : { name: '', role: '', email: '', dailyCapacity: 8 });
     openModal();
   };
 
   const handleSubmit = async (values: UserPayload) => {
-    const payload = { ...values, email: values.email || null };
+    const payload = { ...values, email: values.email || null, dailyCapacity: values.dailyCapacity ? Number(values.dailyCapacity) : null };
     if (activeUser) {
       await updateUser(activeUser.id, payload);
     } else {
@@ -87,6 +90,7 @@ export function UserManagementView() {
       <Table.Td>{user.name}</Table.Td>
       <Table.Td>{user.email}</Table.Td>
       <Table.Td>{user.role}</Table.Td>
+      <Table.Td>{user.dailyCapacity}</Table.Td>
       <Table.Td>
         <Group gap="xs" justify='flex-end'>
           <Tooltip label="Edit user">
@@ -112,6 +116,7 @@ export function UserManagementView() {
             <TextInput withAsterisk label="Name" placeholder="John Doe" {...form.getInputProps('name')} />
             <TextInput withAsterisk label="Role" placeholder="Developer" {...form.getInputProps('role')} />
             <TextInput label="Email" placeholder="user@example.com" {...form.getInputProps('email')} />
+            <NumberInput label="Daily Capacity (hours)" placeholder="8" min={0} {...form.getInputProps('dailyCapacity')} />
             <Group justify="flex-end" mt="md">
               <Button type="submit">{activeUser ? 'Update' : 'Create'}</Button>
             </Group>
@@ -138,6 +143,7 @@ export function UserManagementView() {
               <Table.Th>Name</Table.Th>
               <Table.Th>Email</Table.Th>
               <Table.Th>Role</Table.Th>
+              <Table.Th>Capacity</Table.Th>
               <Table.Th style={{width: 100, textAlign: 'right'}}>Actions</Table.Th>
             </Table.Tr>
           </Table.Thead>

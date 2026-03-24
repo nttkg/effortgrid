@@ -7,6 +7,7 @@ export interface UserPayload {
   name: string;
   role: string;
   email: string | null;
+  dailyCapacity: number | null;
 }
 
 export function useUsers() {
