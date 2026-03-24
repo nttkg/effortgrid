@@ -5,12 +5,12 @@ import {
   Paper,
   Text,
   Group,
-  RingProgress,
   Center,
   Loader,
   Alert,
   Title,
-  Box,
+  Stack,
+  Badge,
 } from '@mantine/core';
 import {
   ResponsiveContainer,
@@ -22,7 +22,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { IconAlertCircle, IconArrowUpRight, IconArrowDownRight } from '@tabler/icons-react';
+import { IconAlertCircle } from '@tabler/icons-react';
 import { EvmKpis, SCurveDataPoint } from '../../types';
 import classes from './Dashboard.module.css';
 import dayjs from 'dayjs';
@@ -31,36 +31,6 @@ interface DashboardViewProps {
   planVersionId: number | null;
 }
 
-interface StatCardProps {
-  label: string;
-  value: string;
-  diff?: number;
-}
-
-const StatCard = ({ label, value, diff }: StatCardProps) => {
-    const DiffIcon = diff && diff > 0 ? IconArrowUpRight : IconArrowDownRight;
-    const diffColor = diff && diff > 0 ? 'teal' : 'red';
-  
-    return (
-      <Paper withBorder p="md" radius="md" className={classes.stat_card}>
-        <Group justify="space-between">
-          <Text size="xs" c="dimmed" className={classes.stat_label}>
-            {label}
-          </Text>
-        </Group>
-  
-        <Group align="flex-end" gap="xs" mt={20}>
-          <Text className={classes.stat_value}>{value}</Text>
-          {diff !== undefined && (
-            <Text c={diffColor} fz="sm" fw={500} className={classes.stat_diff}>
-              <span>{diff.toFixed(2)}%</span>
-              <DiffIcon size="1rem" stroke={1.5} />
-            </Text>
-          )}
-        </Group>
-      </Paper>
-    );
-  };
 
 export function DashboardView({ planVersionId }: DashboardViewProps) {
   const [kpis, setKpis] = useState<EvmKpis | null>(null);
