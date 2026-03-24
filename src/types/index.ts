@@ -3,14 +3,14 @@
 
 export type WbsElementType = 'Project' | 'WorkPackage' | 'Activity';
 
-export interface Project {
+export interface Portfolio {
   id: number;
   name: string;
 }
 
 export interface PlanVersion {
   id: number;
-  projectId: number;
+  portfolioId: number;
   name: string;
   isDraft: boolean;
 }

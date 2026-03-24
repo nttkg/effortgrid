@@ -1,7 +1,7 @@
 # System Architecture
 
 ## 1. Overview
-本プロジェクトは、WBS (Work Breakdown Structure) と EVM (Earned Value Management) を管理するローカルファーストなデスクトップアプリケーションである。
+本アプリケーションは、WBS (Work Breakdown Structure) と EVM (Earned Value Management) を管理するローカルファーストなデスクトップアプリケーションである。
 Tauri (v2) を基盤とし、重厚なデータ処理とEVM計算（ロールアップ等）はバックエンドの Rust が、リッチで宣言的なマトリックスUIの描画はフロントエンドの React (Mantine) が担当する。
 
 ## 2. Directory & Module Structure

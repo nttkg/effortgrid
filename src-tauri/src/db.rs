@@ -67,7 +67,7 @@ pub enum WbsElementType {
 
 #[derive(Debug, Serialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct Project {
+pub struct Portfolio {
     pub id: i64,
     pub name: String,
 }
@@ -76,7 +76,7 @@ pub struct Project {
 #[serde(rename_all = "camelCase")]
 pub struct PlanVersion {
     pub id: i64,
-    pub project_id: i64,
+    pub portfolio_id: i64,
     pub name: String,
     pub is_draft: bool,
 }
@@ -154,28 +154,28 @@ pub struct PvAllocation {
 
 // ----- DB Access Functions -----
 
-/// 新規プロジェクトを作成し、初期ドラフト版の計画バージョンも併せて作成します。
-pub async fn create_project(pool: &SqlitePool, name: &str) -> DbResult<(Project, PlanVersion)> {
+/// 新規ポートフォリオを作成し、初期ドラフト版の計画バージョンも併せて作成します。
+pub async fn create_portfolio(pool: &SqlitePool, name: &str) -> DbResult<(Portfolio, PlanVersion)> {
     let mut tx = pool.begin().await?;
 
-    // 1. projectsテーブルにレコードを挿入
-    let project_id = sqlx::query("INSERT INTO projects (name) VALUES (?)")
+    // 1. portfoliosテーブルにレコードを挿入
+    let portfolio_id = sqlx::query("INSERT INTO portfolios (name) VALUES (?)")
         .bind(name)
         .execute(&mut *tx)
         .await?
         .last_insert_rowid();
 
-    // 2. 作成したプロジェクトの情報を取得
-    let project = sqlx::query_as::<_, Project>("SELECT * FROM projects WHERE id = ?")
-        .bind(project_id)
+    // 2. 作成したポートフォリオの情報を取得
+    let portfolio = sqlx::query_as::<_, Portfolio>("SELECT * FROM portfolios WHERE id = ?")
+        .bind(portfolio_id)
         .fetch_one(&mut *tx)
         .await?;
 
     // 3. 初期ドラフトのplan_versionsレコードを挿入
     let plan_version_id = sqlx::query(
-        "INSERT INTO plan_versions (project_id, name, is_draft) VALUES (?, ?, ?)",
+        "INSERT INTO plan_versions (portfolio_id, name, is_draft) VALUES (?, ?, ?)",
     )
-    .bind(project_id)
+    .bind(portfolio_id)
     .bind("Working Draft")
     .bind(true)
     .execute(&mut *tx)
@@ -190,7 +190,7 @@ pub async fn create_project(pool: &SqlitePool, name: &str) -> DbResult<(Project,
 
     tx.commit().await?;
 
-    Ok((project, plan_version))
+    Ok((portfolio, plan_version))
 }
 
 /// 新しいWBS要素を作成します。
@@ -207,15 +207,15 @@ pub async fn add_wbs_element(
 ) -> DbResult<WbsElementDetail> {
     let mut tx = pool.begin().await?;
 
-    // 1. plan_versionからproject_idを取得
-    let project_id: i64 = sqlx::query_scalar("SELECT project_id FROM plan_versions WHERE id = ?")
+    // 1. plan_versionからportfolio_idを取得
+    let portfolio_id: i64 = sqlx::query_scalar("SELECT portfolio_id FROM plan_versions WHERE id = ?")
         .bind(plan_version_id)
         .fetch_one(&mut *tx)
         .await?;
 
     // 2. 不変のwbs_elementsレコードを作成し、Global IDを取得
-    let wbs_element_id = sqlx::query("INSERT INTO wbs_elements (project_id) VALUES (?)")
-        .bind(project_id)
+    let wbs_element_id = sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
+        .bind(portfolio_id)
         .execute(&mut *tx)
         .await?
         .last_insert_rowid();
@@ -266,23 +266,23 @@ pub async fn list_wbs_elements(
     Ok(elements)
 }
 
-/// すべてのプロジェクトを取得します。
-pub async fn list_projects(pool: &SqlitePool) -> DbResult<Vec<Project>> {
-    let projects = sqlx::query_as::<_, Project>("SELECT * FROM projects ORDER BY name")
+/// すべてのポートフォリオを取得します。
+pub async fn list_portfolios(pool: &SqlitePool) -> DbResult<Vec<Portfolio>> {
+    let portfolios = sqlx::query_as::<_, Portfolio>("SELECT * FROM portfolios ORDER BY name")
         .fetch_all(pool)
         .await?;
-    Ok(projects)
+    Ok(portfolios)
 }
 
-/// 指定されたプロジェクトIDに属する全ての計画バージョンを取得します。
-pub async fn list_plan_versions_for_project(
+/// 指定されたポートフォリオIDに属する全ての計画バージョンを取得します。
+pub async fn list_plan_versions_for_portfolio(
     pool: &SqlitePool,
-    project_id: i64,
+    portfolio_id: i64,
 ) -> DbResult<Vec<PlanVersion>> {
     let versions = sqlx::query_as::<_, PlanVersion>(
-        "SELECT * FROM plan_versions WHERE project_id = ? ORDER BY id DESC",
+        "SELECT * FROM plan_versions WHERE portfolio_id = ? ORDER BY id DESC",
     )
-    .bind(project_id)
+    .bind(portfolio_id)
     .fetch_all(pool)
     .await?;
     Ok(versions)
@@ -458,23 +458,23 @@ pub async fn get_filterable_wbs_nodes(pool: &SqlitePool, plan_version_id: i64) -
     Ok(nodes)
 }
 
-pub async fn create_baseline(pool: &SqlitePool, project_id: i64, baseline_name: &str) -> DbResult<PlanVersion> {
+pub async fn create_baseline(pool: &SqlitePool, portfolio_id: i64, baseline_name: &str) -> DbResult<PlanVersion> {
     let mut tx = pool.begin().await?;
 
     // 1. Find the current draft plan version
     let draft_version = sqlx::query_as::<_, PlanVersion>(
-        "SELECT * FROM plan_versions WHERE project_id = ? AND is_draft = true",
+        "SELECT * FROM plan_versions WHERE portfolio_id = ? AND is_draft = true",
     )
-    .bind(project_id)
+    .bind(portfolio_id)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(|| sqlx::Error::RowNotFound)?;
 
     // 2. Insert the new baseline version
     let new_version_id = sqlx::query(
-        "INSERT INTO plan_versions (project_id, name, is_draft) VALUES (?, ?, ?)",
+        "INSERT INTO plan_versions (portfolio_id, name, is_draft) VALUES (?, ?, ?)",
     )
-    .bind(project_id)
+    .bind(portfolio_id)
     .bind(baseline_name)
     .bind(false)
     .execute(&mut *tx)

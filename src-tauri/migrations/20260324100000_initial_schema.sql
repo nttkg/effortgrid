@@ -1,7 +1,7 @@
 -- 1. Master Entities (マスターエンティティ)
 -- These tables define the core, globally unique entities within the system.
 
-CREATE TABLE projects (
+CREATE TABLE portfolios (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL
 );
@@ -18,14 +18,14 @@ CREATE TABLE users (
 
 CREATE TABLE wbs_elements (
     id INTEGER PRIMARY KEY, -- Global ID
-    project_id INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    portfolio_id INTEGER NOT NULL,
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE milestones (
     id INTEGER PRIMARY KEY, -- Global ID
-    project_id INTEGER NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    portfolio_id INTEGER NOT NULL,
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 -- 2. Plan Versioning (計画バージョニング)
@@ -33,10 +33,10 @@ CREATE TABLE milestones (
 
 CREATE TABLE plan_versions (
     id INTEGER PRIMARY KEY,
-    project_id INTEGER NOT NULL,
+    portfolio_id INTEGER NOT NULL,
     name TEXT NOT NULL, -- e.g., "Working Draft", "V1 Baseline"
     is_draft INTEGER NOT NULL CHECK(is_draft IN (0, 1)), -- SQLite boolean
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 -- 3. Plan Snapshot Details (計画スナップショットの詳細)

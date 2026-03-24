@@ -16,9 +16,9 @@
 ```mermaid
 erDiagram
     %% Master Entities
-    projects ||--o{ wbs_elements : "has (プロジェクトは複数の要素を持つ)"
-    projects ||--o{ milestones : "has (横断的なマイルストーン)"
-    projects ||--o{ plan_versions : "has baselines (計画の版)"
+    portfolios ||--o{ wbs_elements : "has (ポートフォリオは複数の要素を持つ)"
+    portfolios ||--o{ milestones : "has (横断的なマイルストーン)"
+    portfolios ||--o{ plan_versions : "has baselines (計画の版)"
     users ||--o{ actual_costs : "works on (実績を記録)"
     users ||--o{ progress_updates : "reports on (進捗を報告)"
     
@@ -36,7 +36,7 @@ erDiagram
     milestones ||--o{ plan_milestones : "is described by (マイルストーン本体)"
     milestones ||--o{ wbs_element_details : "targets (要素が目標として参照)"
 
-    projects {
+    portfolios {
         INTEGER id PK
         TEXT name
     }
@@ -47,15 +47,15 @@ erDiagram
     }
     wbs_elements {
         INTEGER id PK "Global ID (不変の要素実体)"
-        INTEGER project_id FK
+        INTEGER portfolio_id FK
     }
     milestones {
         INTEGER id PK "Global ID (不変のマイルストーン実体)"
-        INTEGER project_id FK
+        INTEGER portfolio_id FK
     }
     plan_versions {
         INTEGER id PK
-        INTEGER project_id FK
+        INTEGER portfolio_id FK
         TEXT name "e.g., Working Draft, V1 Baseline"
         BOOLEAN is_draft "trueなら現在編集中の計画"
     }

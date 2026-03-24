@@ -17,14 +17,14 @@ import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
 import { z } from 'zod';
 import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy, IconBriefcase } from '@tabler/icons-react';
-import { Project, PlanVersion } from './types';
+import { Portfolio, PlanVersion } from './types';
 import { WbsListView } from './features/wbs/WbsListView';
 import { AllocationGrid } from './features/allocations/AllocationGrid';
 import { ExecutionView } from './features/execution/ExecutionView';
 import { DashboardView } from './features/dashboard/DashboardView';
 
-const createProjectSchema = z.object({
-  name: z.string().min(1, { message: 'Project name is required' }),
+const createPortfolioSchema = z.object({
+  name: z.string().min(1, { message: 'Portfolio name is required' }),
 });
 
 const createBaselineSchema = z.object({
@@ -35,27 +35,27 @@ function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
   const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
   const [selectedPlanVersionId, setSelectedPlanVersionId] = useState<string | null>(null);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
   const [baselineModalOpened, { open: openBaselineModal, close: closeBaselineModal }] = useDisclosure(false);
 
-  const fetchProjects = async () => {
+  const fetchPortfolios = async () => {
     try {
-      const result = await invoke<Project[]>('list_projects');
-      setProjects(result);
+      const result = await invoke<Portfolio[]>('list_portfolios');
+      setPortfolios(result);
     } catch (error) {
-      console.error('Failed to fetch projects:', error);
+      console.error('Failed to fetch portfolios:', error);
     }
   };
 
-  const fetchPlanVersions = async (projectId: number) => {
+  const fetchPlanVersions = async (portfolioId: number) => {
     try {
-      const result = await invoke<PlanVersion[]>('list_plan_versions_for_project', {
-        projectId,
+      const result = await invoke<PlanVersion[]>('list_plan_versions_for_portfolio', {
+        portfolioId,
       });
       setPlanVersions(result);
       // Select the draft version by default
@@ -75,17 +75,17 @@ function App() {
   };
 
   useEffect(() => {
-    fetchProjects();
+    fetchPortfolios();
   }, []);
 
   useEffect(() => {
-    if (selectedProjectId) {
-      fetchPlanVersions(Number(selectedProjectId));
+    if (selectedPortfolioId) {
+      fetchPlanVersions(Number(selectedPortfolioId));
     } else {
       setPlanVersions([]);
       setSelectedPlanVersionId(null);
     }
-  }, [selectedProjectId]);
+  }, [selectedPortfolioId]);
 
   const selectedPlanVersion = useMemo(
     () => planVersions.find((v) => String(v.id) === selectedPlanVersionId),
@@ -93,9 +93,9 @@ function App() {
   );
   const isReadOnly = useMemo(() => (selectedPlanVersion ? !selectedPlanVersion.isDraft : true), [selectedPlanVersion]);
 
-  const projectForm = useForm({
+  const portfolioForm = useForm({
     initialValues: { name: '' },
-    validate: zodResolver(createProjectSchema as any),
+    validate: zodResolver(createPortfolioSchema as any),
   });
 
   const baselineForm = useForm({
@@ -103,55 +103,55 @@ function App() {
     validate: zodResolver(createBaselineSchema as any),
   });
 
-  const handleCreateProject = async (values: { name: string }) => {
+  const handleCreatePortfolio = async (values: { name: string }) => {
     try {
-      await invoke('create_project', { name: values.name });
+      await invoke('create_portfolio', { name: values.name });
       closeCreateModal();
-      projectForm.reset();
-      await fetchProjects(); // Refresh project list
+      portfolioForm.reset();
+      await fetchPortfolios(); // Refresh portfolio list
     } catch (error) {
-      console.error('Failed to create project:', error);
+      console.error('Failed to create portfolio:', error);
     }
   };
 
   const handleCreateBaseline = async (values: { name: string }) => {
-    if (!selectedProjectId) return;
+    if (!selectedPortfolioId) return;
     try {
       await invoke('create_baseline', {
         payload: {
-          projectId: Number(selectedProjectId),
+          portfolioId: Number(selectedPortfolioId),
           baselineName: values.name,
         },
       });
       closeBaselineModal();
       baselineForm.reset();
-      await fetchPlanVersions(Number(selectedProjectId)); // Refresh plan versions
+      await fetchPlanVersions(Number(selectedPortfolioId)); // Refresh plan versions
     } catch (error) {
       console.error('Failed to create baseline:', error);
     }
   };
 
-  const projectSelectData = projects.map((p) => ({ value: String(p.id), label: p.name }));
+  const portfolioSelectData = portfolios.map((p) => ({ value: String(p.id), label: p.name }));
   const planVersionSelectData = planVersions.map((v) => ({
     value: String(v.id),
     label: `${v.isDraft ? '🟢' : '🔒'} ${v.name}`,
   }));
 
-  const selectedProject = projects.find(p => p.id === Number(selectedProjectId));
+  const selectedPortfolio = portfolios.find(p => p.id === Number(selectedPortfolioId));
 
   return (
     <>
-      <Modal opened={createModalOpened} onClose={closeCreateModal} title="Create New Project">
-        <form onSubmit={projectForm.onSubmit(handleCreateProject)}>
+      <Modal opened={createModalOpened} onClose={closeCreateModal} title="Create New Portfolio">
+        <form onSubmit={portfolioForm.onSubmit(handleCreatePortfolio)}>
           <Stack>
             <TextInput
               withAsterisk
-              label="Project Name"
-              placeholder="e.g., My Awesome Project"
-              {...projectForm.getInputProps('name')}
+              label="Portfolio Name"
+              placeholder="e.g., My Awesome Portfolio"
+              {...portfolioForm.getInputProps('name')}
             />
             <Group justify="flex-end" mt="md">
-              <Button type="submit">Create Project</Button>
+              <Button type="submit">Create Portfolio</Button>
             </Group>
           </Stack>
         </form>
@@ -185,10 +185,10 @@ function App() {
             <Title order={3}>EffortGrid</Title>
             <Group style={{ flex: 1 }} justify="center">
               <Select
-                placeholder="Select a project"
-                data={projectSelectData}
-                value={selectedProjectId}
-                onChange={setSelectedProjectId}
+                placeholder="Select a portfolio"
+                data={portfolioSelectData}
+                value={selectedPortfolioId}
+                onChange={setSelectedPortfolioId}
                 clearable
                 style={{ width: 200 }}
               />
@@ -197,7 +197,7 @@ function App() {
                 data={planVersionSelectData}
                 value={selectedPlanVersionId}
                 onChange={setSelectedPlanVersionId}
-                disabled={!selectedProjectId}
+                disabled={!selectedPortfolioId}
                 style={{ width: 200 }}
               />
             </Group>
@@ -215,7 +215,7 @@ function App() {
 
         <AppShell.Navbar p="md">
           <Text size="xs" tt="uppercase" c="dimmed" fw={700} mb="sm">
-            {selectedProject ? selectedProject.name : 'No Project Selected'}
+            {selectedPortfolio ? selectedPortfolio.name : 'No Portfolio Selected'}
           </Text>
           <NavLink
             href="#"
@@ -247,7 +247,7 @@ function App() {
           />
           {/* ... other nav links from UI_DESIGN.md */}
           <Button onClick={openCreateModal} fullWidth leftSection={<IconPlus size={14} />} mt="xl">
-            New Project
+            New Portfolio
           </Button>
         </AppShell.Navbar>
 

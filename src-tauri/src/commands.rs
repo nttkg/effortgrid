@@ -1,5 +1,5 @@
 use crate::db::{
-    self, ActualCost, PlanMilestone, PlanVersion, ProgressUpdate, Project, PvAllocation,
+    self, ActualCost, PlanMilestone, PlanVersion, Portfolio, ProgressUpdate, PvAllocation,
     SqlitePool, User, WbsElementDetail,
 };
 use crate::evm;
@@ -27,8 +27,8 @@ type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateProjectResult {
-    project: Project,
+pub struct CreatePortfolioResult {
+    portfolio: Portfolio,
     initial_plan_version: PlanVersion,
 }
 
@@ -99,7 +99,7 @@ pub struct UpsertDailyAllocationPayload {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBaselinePayload {
-    project_id: i64,
+    portfolio_id: i64,
     baseline_name: String,
 }
 
@@ -138,13 +138,13 @@ pub struct GetSCurveDataPayload {
 // ----- Tauri Commands -----
 
 #[tauri::command]
-pub async fn create_project(
+pub async fn create_portfolio(
     pool: State<'_, SqlitePool>,
     name: String,
-) -> AppResult<CreateProjectResult> {
-    let (project, plan_version) = db::create_project(&pool, &name).await?;
-    Ok(CreateProjectResult {
-        project,
+) -> AppResult<CreatePortfolioResult> {
+    let (portfolio, plan_version) = db::create_portfolio(&pool, &name).await?;
+    Ok(CreatePortfolioResult {
+        portfolio,
         initial_plan_version: plan_version,
     })
 }
@@ -179,17 +179,17 @@ pub async fn list_wbs_elements(
 }
 
 #[tauri::command]
-pub async fn list_projects(pool: State<'_, SqlitePool>) -> AppResult<Vec<Project>> {
-    let projects = db::list_projects(&pool).await?;
-    Ok(projects)
+pub async fn list_portfolios(pool: State<'_, SqlitePool>) -> AppResult<Vec<Portfolio>> {
+    let portfolios = db::list_portfolios(&pool).await?;
+    Ok(portfolios)
 }
 
 #[tauri::command]
-pub async fn list_plan_versions_for_project(
+pub async fn list_plan_versions_for_portfolio(
     pool: State<'_, SqlitePool>,
-    project_id: i64,
+    portfolio_id: i64,
 ) -> AppResult<Vec<PlanVersion>> {
-    let versions = db::list_plan_versions_for_project(&pool, project_id).await?;
+    let versions = db::list_plan_versions_for_portfolio(&pool, portfolio_id).await?;
     Ok(versions)
 }
 
@@ -230,17 +230,17 @@ pub async fn list_pv_allocations_for_wbs_element(
     Ok(allocations)
 }
 
-/// Checks if a WBS element is an 'Activity' in the project's current draft plan.
+/// Checks if a WBS element is an 'Activity' in the portfolio's current draft plan.
 async fn check_is_activity_in_draft(pool: &SqlitePool, wbs_element_id: i64) -> AppResult<()> {
-    let (project_id,): (i64,) = sqlx::query_as("SELECT project_id FROM wbs_elements WHERE id = ?")
+    let (portfolio_id,): (i64,) = sqlx::query_as("SELECT portfolio_id FROM wbs_elements WHERE id = ?")
         .bind(wbs_element_id)
         .fetch_one(pool)
         .await
         .map_err(db::DbError::from)?;
 
     let (draft_plan_id,): (i64,) =
-        sqlx::query_as("SELECT id FROM plan_versions WHERE project_id = ? AND is_draft = true")
-            .bind(project_id)
+        sqlx::query_as("SELECT id FROM plan_versions WHERE portfolio_id = ? AND is_draft = true")
+            .bind(portfolio_id)
             .fetch_one(pool)
             .await
             .map_err(db::DbError::from)?;
@@ -367,7 +367,7 @@ pub async fn create_baseline(
     payload: CreateBaselinePayload,
 ) -> AppResult<PlanVersion> {
     let new_baseline =
-        db::create_baseline(&pool, payload.project_id, &payload.baseline_name).await?;
+        db::create_baseline(&pool, payload.portfolio_id, &payload.baseline_name).await?;
     Ok(new_baseline)
 }
 
