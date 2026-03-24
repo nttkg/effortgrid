@@ -524,8 +524,14 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
       for (const node of nodes) {
         if (node.elementType === 'Activity') {
           activities.push(node);
-          const usersForActivity = Array.from(assignedUsers[node.wbsElementId] || []);
-          usersForActivity.sort((a,b) => a - b).forEach(userId => {
+          const usersForActivity = new Set(assignedUsers[node.wbsElementId]);
+          
+          const unassignedAllocs = allocations[node.wbsElementId]?.[0];
+          if (unassignedAllocs && Object.values(unassignedAllocs).some(a => a.pv > 0)) {
+            usersForActivity.add(0);
+          }
+
+          Array.from(usersForActivity).sort((a,b) => a - b).forEach(userId => {
             rowIdTuples.push({ wbsId: node.wbsElementId, userId });
           });
         }
@@ -535,7 +541,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     traverse(tree);
     const dates = daysInMonth.map(d => d.format('YYYY-MM-DD'));
     return { activityRowIds: rowIdTuples, dateStrs: dates };
-  }, [tree, daysInMonth, assignedUsers]);
+  }, [tree, daysInMonth, assignedUsers, allocations]);
 
   const focusCell = (wbsElementId: number, userId: number, date: string) => {
     const cell = document.getElementById(`cell-pv-${wbsElementId}-${userId}-${date}`);

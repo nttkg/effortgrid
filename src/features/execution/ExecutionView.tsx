@@ -154,11 +154,11 @@ const ResourceCapacityFooter = ({ users, elements, data, daysInMonth }: {
 };
 
 const GridRow = ({ 
-    node, level, days, data, allElements, allPlanActuals, users, assignedUsersMap,
+    node, level, days, data, allElements, allPlanAllocations, allPlanActuals, users, assignedUsersMap,
     onAcChange, isReadOnly, onAddUser,
     onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells 
 }: {
-  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[]; allPlanActuals: ActualCost[]; users: User[];
+  node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[]; allPlanAllocations: PvAllocation[]; allPlanActuals: ActualCost[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
   onAcChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
   isReadOnly: boolean;
@@ -197,7 +197,7 @@ const GridRow = ({
     }, 0);
   };
 
-  const { nodeTotalActuals } = useMemo(() => {
+  const { nodeTotalEstimated, nodeTotalActuals } = useMemo(() => {
     const getDescendantActivityIds = (startNode: TreeNode): number[] => {
         let ids: number[] = [];
         const stack: TreeNode[] = [startNode];
@@ -209,11 +209,24 @@ const GridRow = ({
         return ids;
     };
     const activityIds = getDescendantActivityIds(node);
+
+    const totalEstimated = activityIds.reduce((sum, id) => {
+        const element = allElements.find(el => el.wbsElementId === id);
+        return sum + (element?.estimatedPv || 0);
+    }, 0);
+
     const totalActuals = allPlanActuals
         .filter(ac => activityIds.includes(ac.wbsElementId))
         .reduce((sum, ac) => sum + ac.actualCost, 0);
-    return { nodeTotalActuals: totalActuals };
-  }, [node, allPlanActuals]);
+        
+    return { nodeTotalEstimated: totalEstimated, nodeTotalActuals: totalActuals };
+  }, [node, allElements, allPlanActuals]);
+
+  const userTotalAllocated = (userId: number) => {
+      return allPlanAllocations
+          .filter(alloc => alloc.wbsElementId === node.wbsElementId && alloc.userId === userId)
+          .reduce((sum, alloc) => sum + alloc.plannedValue, 0);
+  };
 
   const userTotalActuals = (userId: number) => {
     return allPlanActuals
@@ -238,7 +251,7 @@ const GridRow = ({
     <>
       {/* PV Row (Plan) */}
       <Table.Tr>
-        <Table.Td rowSpan={2} className={classes.sticky_col} style={{ verticalAlign: 'middle' }}>
+        <Table.Td rowSpan={2} className={classes.sticky_col} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
           <Group gap="xs" style={{ paddingLeft: level * 20 }}>
             {isActivity && (
               <Menu shadow="md" width={200}>
@@ -258,6 +271,9 @@ const GridRow = ({
             <Text size="sm" truncate>{node.title}</Text>
           </Group>
         </Table.Td>
+        <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+          <Text size="sm" c="dimmed">{nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : ''}</Text>
+        </Table.Td>
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
           return (
@@ -266,12 +282,12 @@ const GridRow = ({
             </Table.Td>
           );
         })}
-        <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-          {/* This column is now empty for the PV row */}
-        </Table.Td>
       </Table.Tr>
       {/* AC Row (Actual) */}
       <Table.Tr>
+        <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
+          <Text size="sm" fw={500}>{nodeTotalActuals > 0 ? nodeTotalActuals.toFixed(1) : ''}</Text>
+        </Table.Td>
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
           return (
@@ -280,9 +296,6 @@ const GridRow = ({
             </Table.Td>
           );
         })}
-        <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
-          <Text size="sm" fw={500}>{nodeTotalActuals > 0 ? nodeTotalActuals.toFixed(1) : ''}</Text>
-        </Table.Td>
       </Table.Tr>
 
       {/* User Rows */}
@@ -305,8 +318,8 @@ const GridRow = ({
                   <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[userId]?.[day.format('YYYY-MM-DD')]?.pv?.toFixed(1) || ''}</Text>
                 </Table.Td>
               ))}
-              <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                {/* This column is now empty for the user's PV row */}
+              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                <Text size="sm" c="dimmed">{userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : ''}</Text>
               </Table.Td>
             </Table.Tr>
             {/* User AC Row */}
@@ -329,7 +342,7 @@ const GridRow = ({
                   </Table.Td>
                 );
               })}
-              <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+              <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
                 <Text size="sm" fw={500}>{userTotalActuals(userId) > 0 ? userTotalActuals(userId).toFixed(1) : ''}</Text>
               </Table.Td>
             </Table.Tr>
@@ -338,7 +351,7 @@ const GridRow = ({
       })}
 
       {/* Child WBS Element Rows */}
-      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} allPlanActuals={allPlanActuals} users={users} assignedUsersMap={assignedUsersMap} onAcChange={onAcChange} onAddUser={onAddUser} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
+      {node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} allPlanAllocations={allPlanAllocations} allPlanActuals={allPlanActuals} users={users} assignedUsersMap={assignedUsersMap} onAcChange={onAcChange} onAddUser={onAddUser} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
     </>
   );
 };
@@ -349,6 +362,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [executionData, setExecutionData] = useState<ExecutionMap>({});
+  const [allPlanAllocations, setAllPlanAllocations] = useState<PvAllocation[]>([]);
   const [allPlanActuals, setAllPlanActuals] = useState<ActualCost[]>([]);
   const [assignedUsers, setAssignedUsers] = useState<{ [wbsId: number]: Set<number> }>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -371,20 +385,22 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
-      setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); return;
+      setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); setAllPlanAllocations([]); return;
     }
     setIsLoading(true); setError(null);
     const start = daysInMonth[0].format('YYYY-MM-DD');
     const end = daysInMonth[daysInMonth.length - 1].format('YYYY-MM-DD');
 
     try {
-      const [wbs, data, allActuals] = await Promise.all([
+      const [wbs, data, allActuals, allAllocs] = await Promise.all([
         invoke<WbsElementDetail[]>('list_wbs_elements', { planVersionId }),
         invoke<ExecutionData>('get_execution_data', { payload: { planVersionId, startDate: start, endDate: end } }),
         invoke<ActualCost[]>('list_all_actuals_for_plan_version', { planVersionId }),
+        invoke<PvAllocation[]>('list_all_allocations_for_plan_version', { planVersionId }),
       ]);
       setElements(wbs);
       setAllPlanActuals(allActuals);
+      setAllPlanAllocations(allAllocs);
 
       const execMap: ExecutionMap = {};
       const initialAssigned: { [wbsId: number]: Set<number> } = {};
@@ -770,6 +786,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th className={classes.sticky_col_header}>WBS Element</Table.Th>
+                <Table.Th style={{width: '6rem', minWidth: '6rem'}}>Total</Table.Th>
                 {daysInMonth.map((day) => {
                   const isWeekend = day.day() === 0 || day.day() === 6;
                   return (
@@ -778,14 +795,13 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                     </Table.Th>
                   );
                 })}
-                <Table.Th>Total AC</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {tree.map(node => 
                 <GridRow 
                     key={node.id} node={node} level={0} days={daysInMonth} 
-                    data={executionData} allElements={elements} allPlanActuals={allPlanActuals} users={users}
+                    data={executionData} allElements={elements} allPlanAllocations={allPlanAllocations} allPlanActuals={allPlanActuals} users={users}
                     assignedUsersMap={assignedUsers}
                     onAcChange={handleAcChange} isReadOnly={isReadOnly} 
                     onAddUser={handleAddUserToActivity}
