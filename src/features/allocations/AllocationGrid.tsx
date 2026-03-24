@@ -57,6 +57,9 @@ const PvInputCell = ({
   isReadOnly,
   onKeyDown,
   onPaste,
+  onMouseDown,
+  onMouseOver,
+  isSelected,
 }: {
   wbsElementId: number;
   date: string;
@@ -65,6 +68,9 @@ const PvInputCell = ({
   isReadOnly: boolean;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onMouseDown: (e: React.MouseEvent<HTMLInputElement>) => void;
+  onMouseOver: () => void;
+  isSelected: boolean;
 }) => {
   const [value, setValue] = useState<string | number>(initialValue ?? '');
 
@@ -89,6 +95,9 @@ const PvInputCell = ({
       onBlur={handleBlur}
       onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
       onPaste={(e) => onPaste(e, wbsElementId, date)}
+      onMouseDown={onMouseDown}
+      onMouseOver={onMouseOver}
+      style={{ backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : undefined, cursor: 'cell' }}
       step={0.1}
       min={0}
       hideControls
@@ -108,6 +117,9 @@ const GridRow = ({
   isReadOnly,
   onCellKeyDown,
   onCellPaste,
+  onCellMouseDown,
+  onCellMouseOver,
+  selectedCells,
 }: {
   node: TreeNode;
   level: number;
@@ -118,6 +130,9 @@ const GridRow = ({
   isReadOnly: boolean;
   onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellMouseOver: (wbsElementId: number, date: string) => void;
+  selectedCells: Set<string>;
 }) => {
   // Memoize descendant IDs to avoid recalculating on every render
   const descendantIds = useMemo(() => {
@@ -160,6 +175,7 @@ const GridRow = ({
 
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
+          const cellId = `cell-pv-${node.wbsElementId}-${dateStr}`;
           return (
             <Table.Td key={dateStr}>
               {node.elementType === 'Activity' ? (
@@ -171,6 +187,9 @@ const GridRow = ({
                   isReadOnly={isReadOnly}
                   onKeyDown={onCellKeyDown}
                   onPaste={onCellPaste}
+                  onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, dateStr)}
+                  onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
+                  isSelected={selectedCells.has(cellId)}
                 />
               ) : (
                 <div className={classes.rollup_cell}>
@@ -195,6 +214,9 @@ const GridRow = ({
           isReadOnly={isReadOnly}
           onCellKeyDown={onCellKeyDown}
           onCellPaste={onCellPaste}
+          onCellMouseDown={onCellMouseDown}
+          onCellMouseOver={onCellMouseOver}
+          selectedCells={selectedCells}
         />
       ))}
     </>
@@ -208,6 +230,9 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   const [allocations, setAllocations] = useState<AllocationMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
 
   const daysInMonth = useMemo(() => {
     const start = dayjs(currentMonth).startOf('month');
@@ -220,6 +245,12 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     }
     return days;
   }, [currentMonth]);
+
+  useEffect(() => {
+    const handleMouseUp = () => setIsSelecting(false);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
 
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
@@ -303,6 +334,77 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     cell?.focus();
   };
 
+  const handleCellMouseDown = (e: React.MouseEvent, wbsElementId: number, date: string) => {
+    e.preventDefault();
+    setIsSelecting(true);
+    const cellId = `cell-pv-${wbsElementId}-${date}`;
+    
+    if (e.shiftKey && selectionAnchor) {
+        // Range selection
+        const startIdParts = selectionAnchor.split('-');
+        const startWbsId = Number(startIdParts[2]);
+        const startDate = startIdParts.slice(3).join('-');
+
+        const startRow = activityRowIds.indexOf(startWbsId);
+        const startCol = dateStrs.indexOf(startDate);
+        const endRow = activityRowIds.indexOf(wbsElementId);
+        const endCol = dateStrs.indexOf(date);
+
+        if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
+            setSelectedCells(new Set([cellId]));
+            return;
+        }
+        
+        const newSelectedCells = new Set<string>();
+        const minRow = Math.min(startRow, endRow);
+        const maxRow = Math.max(startRow, endRow);
+        const minCol = Math.min(startCol, endCol);
+        const maxCol = Math.max(startCol, endCol);
+
+        for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+                const cellWbsId = activityRowIds[r];
+                const cellDate = dateStrs[c];
+                newSelectedCells.add(`cell-pv-${cellWbsId}-${cellDate}`);
+            }
+        }
+        setSelectedCells(newSelectedCells);
+    } else {
+        setSelectionAnchor(cellId);
+        setSelectedCells(new Set([cellId]));
+    }
+  };
+
+  const handleCellMouseOver = (wbsElementId: number, date: string) => {
+    if (!isSelecting || !selectionAnchor) return;
+    
+    const startIdParts = selectionAnchor.split('-');
+    const startWbsId = Number(startIdParts[2]);
+    const startDate = startIdParts.slice(3).join('-');
+
+    const startRow = activityRowIds.indexOf(startWbsId);
+    const startCol = dateStrs.indexOf(startDate);
+    const endRow = activityRowIds.indexOf(wbsElementId);
+    const endCol = dateStrs.indexOf(date);
+
+    if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) return;
+
+    const newSelectedCells = new Set<string>();
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+
+    for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+            const cellWbsId = activityRowIds[r];
+            const cellDate = dateStrs[c];
+            newSelectedCells.add(`cell-pv-${cellWbsId}-${cellDate}`);
+        }
+    }
+    setSelectedCells(newSelectedCells);
+  };
+
   const handlePvChange = useCallback(
     async (wbsElementId: number, date: string, value: number | null, shouldRefetch = true) => {
       if (!planVersionId) return;
@@ -360,6 +462,21 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         if (isReadOnly) return;
 
         const pasteData = e.clipboardData.getData('text');
+        
+        if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
+            const valueStr = pasteData.trim();
+            const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
+            const updates: Promise<void>[] = [];
+            selectedCells.forEach(cellId => {
+                const [,,, ...dateParts] = cellId.split('-');
+                const cellWbsId = Number(cellId.split('-')[2]);
+                updates.push(handlePvChange(cellWbsId, dateParts.join('-'), value, false));
+            });
+            await Promise.all(updates);
+            fetchAllData();
+            return;
+        }
+
         const rows = pasteData.split(/\r\n|\n|\r/);
 
         const startRowIndex = activityRowIds.indexOf(startWbsId);
@@ -391,9 +508,53 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         await Promise.all(updates);
         fetchAllData();
     },
-    [activityRowIds, dateStrs, isReadOnly, handlePvChange, fetchAllData]
+    [activityRowIds, dateStrs, isReadOnly, handlePvChange, fetchAllData, selectedCells]
   );
   
+  useEffect(() => {
+    const handleCopy = (e: ClipboardEvent) => {
+      if (selectedCells.size === 0 || !e.clipboardData) return;
+      
+      const activeEl = document.activeElement;
+      if (!activeEl || !activeEl.id.startsWith('cell-pv-')) return;
+
+      e.preventDefault();
+
+      let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
+      
+      const cellCoords = Array.from(selectedCells).map(cellId => {
+        const [,,, ...dateParts] = cellId.split('-');
+        const date = dateParts.join('-');
+        const wbsId = Number(cellId.split('-')[2]);
+        const r = activityRowIds.indexOf(wbsId);
+        const c = dateStrs.indexOf(date);
+        if (r > -1 && c > -1) {
+            minRow = Math.min(minRow, r); maxRow = Math.max(maxRow, r);
+            minCol = Math.min(minCol, c); maxCol = Math.max(maxCol, c);
+        }
+        return { r, c, wbsId, date };
+      }).filter(item => item.r > -1 && item.c > -1);
+
+      if (minRow === Infinity) return;
+
+      const grid: (number | string)[][] = Array(maxRow - minRow + 1).fill(0).map(() => Array(maxCol - minCol + 1).fill(''));
+      
+      for (const { r, c, wbsId, date } of cellCoords) {
+        const cellId = `cell-pv-${wbsId}-${date}`;
+        if (selectedCells.has(cellId)) {
+            const value = allocations[wbsId]?.[date]?.pv;
+            grid[r - minRow][c - minCol] = value ?? '';
+        }
+      }
+      
+      const tsv = grid.map(row => row.join('\t')).join('\n');
+      e.clipboardData.setData('text/plain', tsv);
+    };
+
+    document.addEventListener('copy', handleCopy);
+    return () => document.removeEventListener('copy', handleCopy);
+  }, [selectedCells, allocations, activityRowIds, dateStrs]);
+
   const changeMonth = (amount: number) => {
     setCurrentMonth(dayjs(currentMonth).add(amount, 'month').toDate());
   };
@@ -453,6 +614,9 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                       isReadOnly={isReadOnly}
                       onCellKeyDown={handleCellKeyDown}
                       onCellPaste={handleCellPaste}
+                      onCellMouseDown={handleCellMouseDown}
+                      onCellMouseOver={handleCellMouseOver}
+                      selectedCells={selectedCells}
                   />
               ))}
             </Table.Tbody>

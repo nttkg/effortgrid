@@ -26,11 +26,14 @@ interface GridProps {
 const getBadgeColor = (type: WbsElementType) => ({ Project: 'blue', WorkPackage: 'cyan', Activity: 'teal' }[type] || 'gray');
 
 // --- Sub-components ---
-const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, onKeyDown, onPaste }: {
+const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
   wbsElementId: number; date: string; pv?: number; initialAc?: number; isReadOnly: boolean;
   onCommit: (value: number | null) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onMouseDown: (e: React.MouseEvent<HTMLInputElement>) => void;
+  onMouseOver: () => void;
+  isSelected: boolean;
 }) => {
   const [value, setValue] = useState<string | number>(initialAc ?? '');
   useEffect(() => { setValue(initialAc ?? ''); }, [initialAc]);
@@ -52,6 +55,9 @@ const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, 
         onBlur={handleBlur}
         onKeyDown={(e) => onKeyDown(e, wbsElementId, date)}
         onPaste={(e) => onPaste(e, wbsElementId, date)}
+        onMouseDown={onMouseDown}
+        onMouseOver={onMouseOver}
+        style={{ backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : undefined, cursor: 'cell' }}
         step={0.1} min={0} hideControls
         readOnly={isReadOnly}
         variant="unstyled"
@@ -60,12 +66,15 @@ const AcInputCell = ({ wbsElementId, date, pv, initialAc, onCommit, isReadOnly, 
   );
 };
 
-const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly, onCellKeyDown, onCellPaste }: {
+const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly, onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells }: {
   node: TreeNode; level: number; days: dayjs.Dayjs[]; data: ExecutionMap; allElements: WbsElementDetail[];
   onAcChange: (wbsElementId: number, date: string, value: number | null, shouldRefetch?: boolean) => void;
   isReadOnly: boolean;
   onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
   onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, date: string) => void;
+  onCellMouseOver: (wbsElementId: number, date: string) => void;
+  selectedCells: Set<string>;
 }) => {
   const descendantIds = useMemo(() => {
     const getIds = (n: TreeNode): number[] => [n.wbsElementId, ...n.children.flatMap(getIds)];
@@ -96,6 +105,7 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
         </Table.Td>
         {days.map((day) => {
           const dateStr = day.format('YYYY-MM-DD');
+          const cellId = `cell-ac-${node.wbsElementId}-${dateStr}`;
           return (
             <Table.Td key={dateStr} className={classes.data_cell}>
               {node.elementType === 'Activity' ? (
@@ -106,6 +116,9 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
                   onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
                   isReadOnly={isReadOnly}
                   onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                  onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, dateStr)}
+                  onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
+                  isSelected={selectedCells.has(cellId)}
                 />
               ) : (
                 <div className={classes.rollup_cell}>
@@ -130,6 +143,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const [executionData, setExecutionData] = useState<ExecutionMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
 
   const daysInMonth = useMemo(() => {
     const start = dayjs(currentMonth).startOf('month');
@@ -176,6 +192,12 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     }
   }, [planVersionId, daysInMonth]);
 
+  useEffect(() => {
+    const handleMouseUp = () => setIsSelecting(false);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
   useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
   const tree = useMemo(() => {
@@ -215,6 +237,77 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   
   const focusCell = (wbsElementId: number, date: string) => document.getElementById(`cell-ac-${wbsElementId}-${date}`)?.focus();
 
+  const handleCellMouseDown = (e: React.MouseEvent, wbsElementId: number, date: string) => {
+    e.preventDefault();
+    setIsSelecting(true);
+    const cellId = `cell-ac-${wbsElementId}-${date}`;
+    
+    if (e.shiftKey && selectionAnchor) {
+        // Range selection
+        const startIdParts = selectionAnchor.split('-');
+        const startWbsId = Number(startIdParts[2]);
+        const startDate = startIdParts.slice(3).join('-');
+
+        const startRow = activityRowIds.indexOf(startWbsId);
+        const startCol = dateStrs.indexOf(startDate);
+        const endRow = activityRowIds.indexOf(wbsElementId);
+        const endCol = dateStrs.indexOf(date);
+
+        if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
+            setSelectedCells(new Set([cellId]));
+            return;
+        }
+        
+        const newSelectedCells = new Set<string>();
+        const minRow = Math.min(startRow, endRow);
+        const maxRow = Math.max(startRow, endRow);
+        const minCol = Math.min(startCol, endCol);
+        const maxCol = Math.max(startCol, endCol);
+
+        for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+                const cellWbsId = activityRowIds[r];
+                const cellDate = dateStrs[c];
+                newSelectedCells.add(`cell-ac-${cellWbsId}-${cellDate}`);
+            }
+        }
+        setSelectedCells(newSelectedCells);
+    } else {
+        setSelectionAnchor(cellId);
+        setSelectedCells(new Set([cellId]));
+    }
+  };
+
+  const handleCellMouseOver = (wbsElementId: number, date: string) => {
+    if (!isSelecting || !selectionAnchor) return;
+    
+    const startIdParts = selectionAnchor.split('-');
+    const startWbsId = Number(startIdParts[2]);
+    const startDate = startIdParts.slice(3).join('-');
+
+    const startRow = activityRowIds.indexOf(startWbsId);
+    const startCol = dateStrs.indexOf(startDate);
+    const endRow = activityRowIds.indexOf(wbsElementId);
+    const endCol = dateStrs.indexOf(date);
+
+    if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) return;
+
+    const newSelectedCells = new Set<string>();
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+
+    for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+            const cellWbsId = activityRowIds[r];
+            const cellDate = dateStrs[c];
+            newSelectedCells.add(`cell-ac-${cellWbsId}-${cellDate}`);
+        }
+    }
+    setSelectedCells(newSelectedCells);
+  };
+
   const handleCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, date: string) => {
     const { key } = e;
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
@@ -224,12 +317,37 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     else if (key === 'ArrowDown' && rIdx < activityRowIds.length - 1) focusCell(activityRowIds[rIdx + 1], date);
     else if (key === 'ArrowLeft' && cIdx > 0) focusCell(wbsElementId, dateStrs[cIdx - 1]);
     else if (key === 'ArrowRight' && cIdx < dateStrs.length - 1) focusCell(wbsElementId, dateStrs[cIdx + 1]);
-    else if (key === 'Delete' || key === 'Backspace') handleAcChange(wbsElementId, date, null);
-  }, [activityRowIds, dateStrs, handleAcChange]);
+    else if (key === 'Delete' || key === 'Backspace') {
+        const updates: Promise<void>[] = [];
+        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-ac-${wbsElementId}-${date}`]);
+        
+        cellsToUpdate.forEach(cellId => {
+            const [,,, ...dateParts] = cellId.split('-');
+            const cellWbsId = Number(cellId.split('-')[2]);
+            updates.push(handleAcChange(cellWbsId, dateParts.join('-'), null, false));
+        });
+        Promise.all(updates).then(() => fetchAllData());
+    }
+  }, [activityRowIds, dateStrs, handleAcChange, selectedCells, fetchAllData]);
 
   const handleCellPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startDate: string) => {
     e.preventDefault(); if (isReadOnly) return;
     const pasteData = e.clipboardData.getData('text');
+
+    if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
+        const valueStr = pasteData.trim();
+        const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
+        const updates: Promise<void>[] = [];
+        selectedCells.forEach(cellId => {
+            const [,,, ...dateParts] = cellId.split('-');
+            const cellWbsId = Number(cellId.split('-')[2]);
+            updates.push(handleAcChange(cellWbsId, dateParts.join('-'), value, false));
+        });
+        await Promise.all(updates);
+        fetchAllData();
+        return;
+    }
+
     const rows = pasteData.split(/\r\n|\n|\r/);
     const startRIdx = activityRowIds.indexOf(startWbsId), startCIdx = dateStrs.indexOf(startDate);
     if (startRIdx === -1 || startCIdx === -1) return;
@@ -249,7 +367,51 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     
     await Promise.all(updates);
     fetchAllData();
-  }, [activityRowIds, dateStrs, isReadOnly, handleAcChange, fetchAllData]);
+  }, [activityRowIds, dateStrs, isReadOnly, handleAcChange, fetchAllData, selectedCells]);
+
+  useEffect(() => {
+    const handleCopy = (e: ClipboardEvent) => {
+      if (selectedCells.size === 0 || !e.clipboardData) return;
+      
+      const activeEl = document.activeElement;
+      if (!activeEl || !activeEl.id.startsWith('cell-ac-')) return;
+
+      e.preventDefault();
+
+      let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
+      
+      const cellCoords = Array.from(selectedCells).map(cellId => {
+        const [,,, ...dateParts] = cellId.split('-');
+        const date = dateParts.join('-');
+        const wbsId = Number(cellId.split('-')[2]);
+        const r = activityRowIds.indexOf(wbsId);
+        const c = dateStrs.indexOf(date);
+        if (r > -1 && c > -1) {
+            minRow = Math.min(minRow, r); maxRow = Math.max(maxRow, r);
+            minCol = Math.min(minCol, c); maxCol = Math.max(maxCol, c);
+        }
+        return { r, c, wbsId, date };
+      }).filter(item => item.r > -1 && item.c > -1);
+
+      if (minRow === Infinity) return;
+
+      const grid: (number | string)[][] = Array(maxRow - minRow + 1).fill(0).map(() => Array(maxCol - minCol + 1).fill(''));
+      
+      for (const { r, c, wbsId, date } of cellCoords) {
+        const cellId = `cell-ac-${wbsId}-${date}`;
+        if (selectedCells.has(cellId)) {
+            const value = executionData[wbsId]?.[date]?.ac?.value;
+            grid[r - minRow][c - minCol] = value ?? '';
+        }
+      }
+      
+      const tsv = grid.map(row => row.join('\t')).join('\n');
+      e.clipboardData.setData('text/plain', tsv);
+    };
+
+    document.addEventListener('copy', handleCopy);
+    return () => document.removeEventListener('copy', handleCopy);
+  }, [selectedCells, executionData, activityRowIds, dateStrs]);
 
   const changeMonth = (amount: number) => setCurrentMonth(dayjs(currentMonth).add(amount, 'month').toDate());
 
@@ -288,7 +450,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {tree.map(node => <GridRow key={node.id} node={node} level={0} days={daysInMonth} data={executionData} allElements={elements} onAcChange={handleAcChange} isReadOnly={isReadOnly} onCellKeyDown={handleCellKeyDown} onCellPaste={handleCellPaste} />)}
+              {tree.map(node => <GridRow key={node.id} node={node} level={0} days={daysInMonth} data={executionData} allElements={elements} onAcChange={handleAcChange} isReadOnly={isReadOnly} onCellKeyDown={handleCellKeyDown} onCellPaste={handleCellPaste} onCellMouseDown={handleCellMouseDown} onCellMouseOver={handleCellMouseOver} selectedCells={selectedCells} />)}
             </Table.Tbody>
           </Table>
         </Box>
