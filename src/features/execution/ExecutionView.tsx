@@ -102,21 +102,28 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
   const totalAcForMonth = useMemo(() => days.reduce((total, day) => total + getRollupValue(day.format('YYYY-MM-DD'), 'ac'), 0), [days, data, activityDescendants]);
 
   const isActivity = node.elementType === 'Activity';
+  const isWorkPackage = node.elementType === 'WorkPackage';
 
-  if (isActivity) {
-    const totalPvForActivity = useMemo(() => {
+  if (isActivity || isWorkPackage) {
+    const totalPv = useMemo(() => {
+      if (isActivity) {
         return days.reduce((total, day) => {
             const dateStr = day.format('YYYY-MM-DD');
             return total + (data[node.wbsElementId]?.[dateStr]?.pv || 0);
         }, 0);
-    }, [days, data, node.wbsElementId]);
+      }
+      return totalPvForMonth;
+    }, [days, data, node.wbsElementId, isActivity, totalPvForMonth]);
 
-    const totalAcForActivity = useMemo(() => {
-        return days.reduce((total, day) => {
-            const dateStr = day.format('YYYY-MM-DD');
-            return total + (data[node.wbsElementId]?.[dateStr]?.ac?.value || 0);
-        }, 0);
-    }, [days, data, node.wbsElementId]);
+    const totalAc = useMemo(() => {
+      if (isActivity) {
+          return days.reduce((total, day) => {
+              const dateStr = day.format('YYYY-MM-DD');
+              return total + (data[node.wbsElementId]?.[dateStr]?.ac?.value || 0);
+          }, 0);
+      }
+      return totalAcForMonth;
+    }, [days, data, node.wbsElementId, isActivity, totalAcForMonth]);
 
     return (
       <>
@@ -127,14 +134,15 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
           </Table.Td>
           {days.map((day) => {
             const dateStr = day.format('YYYY-MM-DD');
+            const pvValue = isActivity ? data[node.wbsElementId]?.[dateStr]?.pv : getRollupValue(dateStr, 'pv');
             return (
               <Table.Td key={`${dateStr}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[dateStr]?.pv?.toFixed(1) ?? ''}</Text>
+                <Text size="sm" c="dimmed">{pvValue != null && pvValue > 0 ? pvValue.toFixed(1) : ''}</Text>
               </Table.Td>
             );
           })}
           <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-            <Text size="sm" c="dimmed">{totalPvForActivity > 0 ? totalPvForActivity.toFixed(1) : ''}</Text>
+            <Text size="sm" c="dimmed">{totalPv > 0 ? totalPv.toFixed(1) : ''}</Text>
           </Table.Td>
         </Table.Tr>
         {/* AC Row */}
@@ -143,29 +151,34 @@ const GridRow = ({ node, level, days, data, allElements, onAcChange, isReadOnly,
             const dateStr = day.format('YYYY-MM-DD');
             const cellId = `cell-ac-${node.wbsElementId}-${dateStr}`;
             return (
-              <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: 0, borderTop: 'none' }}>
-                <AcInputCell
-                  wbsElementId={node.wbsElementId} date={dateStr}
-                  initialAc={data[node.wbsElementId]?.[dateStr]?.ac?.value}
-                  onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
-                  isReadOnly={isReadOnly}
-                  onKeyDown={onCellKeyDown} onPaste={onCellPaste}
-                  onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, dateStr)}
-                  onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
-                  isSelected={selectedCells.has(cellId)}
-                />
+              <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: isActivity ? 0 : 'var(--table-td-padding)', borderTop: 'none', textAlign: 'right', verticalAlign: 'middle' }}>
+                {isActivity ? (
+                  <AcInputCell
+                    wbsElementId={node.wbsElementId} date={dateStr}
+                    initialAc={data[node.wbsElementId]?.[dateStr]?.ac?.value}
+                    onCommit={(value) => onAcChange(node.wbsElementId, dateStr, value)}
+                    isReadOnly={isReadOnly}
+                    onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                    onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, dateStr)}
+                    onMouseOver={() => onCellMouseOver(node.wbsElementId, dateStr)}
+                    isSelected={selectedCells.has(cellId)}
+                  />
+                ) : (
+                  <Text size="sm" fw={500}>{getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : ''}</Text>
+                )}
               </Table.Td>
             );
           })}
           <Table.Td className={classes.summary_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
-            <Text size="sm" fw={500}>{totalAcForActivity > 0 ? totalAcForActivity.toFixed(1) : ''}</Text>
+            <Text size="sm" fw={500}>{totalAc > 0 ? totalAc.toFixed(1) : ''}</Text>
           </Table.Td>
         </Table.Tr>
+        {isWorkPackage && node.children.map((child) => <GridRow key={child.id} node={child} level={level + 1} days={days} data={data} allElements={allElements} onAcChange={onAcChange} isReadOnly={isReadOnly} onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste} onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver} selectedCells={selectedCells} />)}
       </>
     );
   }
 
-  // Non-Activity Row (Project, WorkPackage)
+  // Project Row
   return (
     <>
       <Table.Tr>
