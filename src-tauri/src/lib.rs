@@ -14,7 +14,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let pool = tauri::async_runtime::block_on(db::init_db())
+            let app_handle = app.handle().clone();
+            let pool = tauri::async_runtime::block_on(db::init_db(&app_handle))
                 .expect("database initialization failed");
             app.manage(pool);
             Ok(())
