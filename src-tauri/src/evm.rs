@@ -124,18 +124,17 @@ pub async fn calculate_evm_kpis(
     .bind(&activity_ids_json)
     .fetch_all(pool)
     .await?;
-    let activity_ids_json = serde_json::to_string(&activity_ids)
-        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
 
     // 1. BAC (Budget at Completion)
     let bac = activities.iter().filter_map(|a| a.estimated_pv).sum();
 
     // 2. PV (Planned Value)
     let pv_row: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(planned_value) FROM pv_allocations WHERE plan_version_id = ? AND end_date <= ?",
+        "SELECT SUM(planned_value) FROM pv_allocations WHERE plan_version_id = ? AND end_date <= ? AND wbs_element_id IN (SELECT value FROM json_each(?))",
     )
     .bind(plan_version_id)
     .bind(up_to_date)
+    .bind(&activity_ids_json)
     .fetch_one(pool)
     .await?;
     let pv = pv_row.0.unwrap_or(0.0);
