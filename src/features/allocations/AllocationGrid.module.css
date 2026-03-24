@@ -60,6 +60,68 @@
   color: var(--mantine-color-dimmed);
 }
 
+.table_container {
+  overflow: auto;
+  /* Adjust based on header/navbar/footer height */
+  height: calc(100vh - 180px);
+  position: relative;
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--mantine-color-body);
+  z-index: 2;
+}
+
+.sticky_col {
+  position: sticky;
+  left: 0;
+  background-color: var(--mantine-color-body);
+  z-index: 1;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+.sticky_col_header {
+  composes: sticky_col;
+  z-index: 3;
+}
+
+.day_header {
+  text-align: center;
+  min-width: 70px;
+}
+
+.day_header_weekend {
+  color: var(--mantine-color-dimmed);
+}
+
+.pv_input {
+  /* Minimal styling for number input to fit in cell */
+  input {
+    text-align: right;
+    padding: 0 var(--mantine-spacing-xs);
+    min-height: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+}
+
+.rollup_cell {
+  text-align: right;
+  padding: 0 var(--mantine-spacing-xs);
+  font-size: var(--mantine-font-size-sm);
+  color: var(--mantine-color-dimmed);
+}
+
 .summary_col {
     text-align: right;
     font-size: var(--mantine-font-size-sm);
