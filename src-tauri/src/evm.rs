@@ -1,5 +1,5 @@
 use crate::db::{DbResult, SqlitePool};
-use chrono::{Datelike, Duration, NaiveDate, Weekday};
+use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::collections::BTreeMap;
