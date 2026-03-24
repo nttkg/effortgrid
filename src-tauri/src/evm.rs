@@ -206,11 +206,18 @@ pub async fn calculate_s_curve_data(
         SELECT MIN(t.d), MAX(t.d) FROM (
             SELECT start_date as d FROM pv_allocations WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))
             UNION ALL
+            SELECT end_date as d FROM pv_allocations WHERE plan_version_id = ? AND wbs_element_id IN (SELECT value FROM json_each(?))
+            UNION ALL
             SELECT work_date as d FROM actual_costs WHERE wbs_element_id IN (SELECT value FROM json_each(?))
+            UNION ALL
+            SELECT report_date as d FROM progress_updates WHERE wbs_element_id IN (SELECT value FROM json_each(?))
         ) as t
         "#,
     )
     .bind(plan_version_id)
+    .bind(&activity_ids_json)
+    .bind(plan_version_id)
+    .bind(&activity_ids_json)
     .bind(&activity_ids_json)
     .bind(&activity_ids_json)
     .fetch_optional(pool)
