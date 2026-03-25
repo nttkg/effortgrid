@@ -501,6 +501,39 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     return weeklyColumns;
   }, [daysInMonth, viewMode]);
 
+  const columns = useMemo((): Column[] => {
+    if (viewMode === 'daily') {
+        return daysInMonth.map(d => ({
+            key: d.format('YYYY-MM-DD'),
+            type: 'day' as const,
+            date: d,
+        }));
+    }
+    
+    // Weekly
+    const weeksMap = new Map<string, dayjs.Dayjs[]>();
+    daysInMonth.forEach(day => {
+        const weekKey = `${day.year()}-W${day.week()}`;
+        if (!weeksMap.has(weekKey)) {
+            weeksMap.set(weekKey, []);
+        }
+        weeksMap.get(weekKey)!.push(day);
+    });
+
+    const weeklyColumns: WeekColumn[] = [];
+    for (const [key, dates] of weeksMap.entries()) {
+        const firstDay = dates[0];
+        const lastDay = dates[dates.length - 1];
+        weeklyColumns.push({
+            key: key,
+            type: 'week' as const,
+            label: `W${firstDay.week()} (${firstDay.format('M/D')}-${lastDay.format('M/D')})`,
+            dates: dates,
+        });
+    }
+    return weeklyColumns;
+  }, [daysInMonth, viewMode]);
+
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
       setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); setAllPlanAllocations([]); return;

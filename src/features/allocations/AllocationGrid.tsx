@@ -714,7 +714,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
       for (const node of nodes) {
         if (node.elementType === 'Activity') {
           activities.push(node);
-          const usersForActivity = new Set(assignedUsers[node.wbsElementId]);
+          const usersForActivity = new Set(assignedUsers[node.wbsElementId] || []);
           
           const unassignedAllocs = allocations[node.wbsElementId]?.[0];
           if (unassignedAllocs && Object.values(unassignedAllocs).some(a => a.pv > 0)) {
