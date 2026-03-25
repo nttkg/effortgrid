@@ -437,12 +437,11 @@ const GridRow = ({
         let startIndex = -1, endIndex = -1;
 
         if (userAllocs) {
-          days.forEach((day, index) => {
-            const dateStr = day.format('YYYY-MM-DD');
-            if (userAllocs[dateStr]?.pv > 0) {
-              if (startIndex === -1) {
-                startIndex = index;
-              }
+          columns.forEach((col, index) => {
+            const dates = col.type === 'day' ? [col.date] : col.dates;
+            const hasValue = dates.some(d => userAllocs[d.format('YYYY-MM-DD')]?.pv > 0);
+            if (hasValue) {
+              if (startIndex === -1) startIndex = index;
               endIndex = index;
             }
           });
@@ -461,32 +460,42 @@ const GridRow = ({
                 {userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : '-'}
             </Table.Td>
 
-            {days.map((day, dayIndex) => {
-              const dateStr = day.format('YYYY-MM-DD');
-              const cellId = `cell-pv-${node.wbsElementId}-${userId}-${dateStr}`;
+            {columns.map((col, colIndex) => {
+              const cellId = `cell-pv-${node.wbsElementId}-${userId}-${col.key}`;
               
               const ganttClasses = [];
-              if (dayIndex >= startIndex && dayIndex <= endIndex && startIndex !== -1) {
+              if (colIndex >= startIndex && colIndex <= endIndex && startIndex !== -1) {
                   ganttClasses.push(classes.ganttBar);
-                  if (dayIndex === startIndex) ganttClasses.push(classes.ganttEdgeStart);
-                  if (dayIndex === endIndex) ganttClasses.push(classes.ganttEdgeEnd);
+                  if (colIndex === startIndex) ganttClasses.push(classes.ganttEdgeStart);
+                  if (colIndex === endIndex) ganttClasses.push(classes.ganttEdgeEnd);
               }
 
               return (
-                <Table.Td key={dateStr} style={{ padding: 0 }} className={ganttClasses.join(' ')}>
-                  <PvInputCell
-                    wbsElementId={node.wbsElementId}
-                    userId={userId}
-                    date={dateStr}
-                    initialValue={allocations[node.wbsElementId]?.[userId]?.[dateStr]?.pv}
-                    onCommit={(value) => onPvChange(node.wbsElementId, userId, dateStr, value)}
-                    isReadOnly={isReadOnly}
-                    onKeyDown={(e) => onCellKeyDown(e, node.wbsElementId, userId, dateStr)}
-                    onPaste={(e) => onCellPaste(e, node.wbsElementId, userId, dateStr)}
-                    onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, userId, dateStr)}
-                    onMouseOver={() => onCellMouseOver(node.wbsElementId, userId, dateStr)}
-                    isSelected={selectedCells.has(cellId)}
-                  />
+                <Table.Td key={col.key} style={{ padding: 0 }} className={ganttClasses.join(' ')}>
+                  {col.type === 'day' ? (
+                    <PvInputCell
+                      wbsElementId={node.wbsElementId}
+                      userId={userId}
+                      date={col.key}
+                      initialValue={allocations[node.wbsElementId]?.[userId]?.[col.key]?.pv}
+                      onCommit={(value) => onPvChange(node.wbsElementId, userId, col.key, value)}
+                      isReadOnly={isReadOnly}
+                      onKeyDown={(e) => onCellKeyDown(e, node.wbsElementId, userId, col.key)}
+                      onPaste={(e) => onCellPaste(e, node.wbsElementId, userId, col.key)}
+                      onMouseDown={(e) => onCellMouseDown(e, node.wbsElementId, userId, col.key)}
+                      onMouseOver={() => onCellMouseOver(node.wbsElementId, userId, col.key)}
+                      isSelected={selectedCells.has(cellId)}
+                    />
+                  ) : (
+                    <WeeklyPvInputCell
+                      wbsElementId={node.wbsElementId}
+                      userId={userId}
+                      dates={col.dates}
+                      allocations={allocations}
+                      onBulkCommit={onBulkPvChange}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
                 </Table.Td>
               );
             })}

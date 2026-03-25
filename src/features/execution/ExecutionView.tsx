@@ -306,14 +306,19 @@ const GridRow = ({
       </Table.Tr>
       {/* AC Row (Actual) */}
       <Table.Tr>
-        <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
-          <Text size="sm" fw={500}>{nodeTotalActuals > 0 ? nodeTotalActuals.toFixed(1) : ''}</Text>
+        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
+          <Text
+            size="sm"
+            fw={500}
+            style={{ color: nodeTotalActuals > nodeTotalAllocated ? 'var(--mantine-color-red-7)' : undefined }}
+          >
+            {nodeTotalActuals > 0 ? nodeTotalActuals.toFixed(1) : ''}
+          </Text>
         </Table.Td>
-        {days.map((day) => {
-          const dateStr = day.format('YYYY-MM-DD');
+        {columns.map((col) => {
           return (
-            <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: 'var(--table-td-padding)', borderTop: 'none', textAlign: 'right', verticalAlign: 'middle' }}>
-              <Text size="sm" fw={500}>{getRollupValue(dateStr, 'ac') > 0 ? getRollupValue(dateStr, 'ac').toFixed(1) : ''}</Text>
+            <Table.Td key={`${col.key}-ac`} className={classes.data_cell} style={{ padding: 'var(--table-td-padding)', borderTop: 'none', textAlign: 'right', verticalAlign: 'middle' }}>
+              <Text size="sm" fw={500}>{getRollupValue(col, 'ac') > 0 ? getRollupValue(col, 'ac').toFixed(1) : ''}</Text>
             </Table.Td>
           );
         })}
