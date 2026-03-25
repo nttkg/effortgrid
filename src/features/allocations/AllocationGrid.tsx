@@ -17,6 +17,7 @@ import {
   Avatar,
   Tooltip,
   rem,
+  SegmentedControl,
 } from '@mantine/core';
 import { MonthPickerInput } from '@mantine/dates';
 import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus } from '@tabler/icons-react';
@@ -24,8 +25,26 @@ import { WbsElementDetail, WbsElementType, PvAllocation, User } from '../../type
 import { useUsers } from '../../hooks/useUsers';
 import dayjs from 'dayjs';
 import classes from './AllocationGrid.module.css';
+import weekOfYear from 'dayjs/plugin/weekOfYear';
+dayjs.extend(weekOfYear);
+
 
 // --- Types ---
+type ViewMode = 'daily' | 'weekly';
+
+interface DayColumn {
+  key: string;
+  type: 'day';
+  date: dayjs.Dayjs;
+}
+interface WeekColumn {
+  key: string;
+  type: 'week';
+  label: string;
+  dates: dayjs.Dayjs[];
+}
+type Column = DayColumn | WeekColumn;
+
 interface TreeNode extends WbsElementDetail {
   children: TreeNode[];
 }
@@ -123,11 +142,78 @@ const PvInputCell = ({
   );
 };
 
-const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
+const WeeklyPvInputCell = ({
+  wbsElementId,
+  userId,
+  dates,
+  allocations,
+  onBulkCommit,
+  isReadOnly,
+}: {
+  wbsElementId: number;
+  userId: number;
+  dates: dayjs.Dayjs[];
+  allocations: AllocationMap;
+  onBulkCommit: (payload: any[]) => void;
+  isReadOnly: boolean;
+}) => {
+  const initialValue = useMemo(() => {
+    return dates.reduce((sum, day) => {
+      const dateStr = day.format('YYYY-MM-DD');
+      return sum + (allocations[wbsElementId]?.[userId]?.[dateStr]?.pv || 0);
+    }, 0);
+  }, [dates, allocations, wbsElementId, userId]);
+
+  const [value, setValue] = useState<string | number>(initialValue > 0 ? initialValue.toFixed(1) : '');
+
+  useEffect(() => {
+    setValue(initialValue > 0 ? initialValue.toFixed(1) : '');
+  }, [initialValue]);
+
+  const handleBlur = () => {
+    const numericValue = value === '' ? null : Number(value);
+    const initialNumericValue = initialValue > 0 ? parseFloat(initialValue.toFixed(1)) : null;
+
+    if (numericValue !== initialNumericValue && numericValue !== initialValue) {
+      const weekdays = dates.filter(d => d.day() >= 1 && d.day() <= 5);
+      const perDayValue = (numericValue && weekdays.length > 0) ? numericValue / weekdays.length : null;
+
+      const payload = dates.map(day => ({
+          wbsElementId,
+          userId,
+          date: day.format('YYYY-MM-DD'),
+          plannedValue: (day.day() >= 1 && day.day() <= 5) ? perDayValue : null,
+      }));
+      onBulkCommit(payload);
+    }
+  };
+
+  return (
+    <NumberInput
+      classNames={{ input: classes.pv_input }}
+      value={value}
+      onChange={setValue}
+      onBlur={handleBlur}
+      style={{ height: '100%' }}
+      styles={{
+        wrapper: { height: '100%' },
+        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)' }
+      }}
+      step={1}
+      min={0}
+      hideControls
+      readOnly={isReadOnly}
+      variant="unstyled"
+    />
+  );
+};
+
+
+const ResourceCapacityFooter = ({ users, elements, allocations, columns }: {
     users: User[];
     elements: WbsElementDetail[];
     allocations: AllocationMap;
-    daysInMonth: dayjs.Dayjs[];
+    columns: Column[];
 }) => {
     const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
@@ -163,33 +249,36 @@ const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
     return (
         <Table.Tfoot>
             <Table.Tr>
-                <Table.Th className={classes.sticky_col_header} style={{ top: 'var(--table-header-height)' }}>Resource Capacity</Table.Th>
-                <Table.Th></Table.Th>
-                <Table.Th></Table.Th>
-                <Table.Th colSpan={daysInMonth.length}></Table.Th>
+                <Table.Th className={classes.sticky_footer} colSpan={3}>Resource Capacity</Table.Th>
+                <Table.Th className={classes.sticky_footer} colSpan={columns.length}></Table.Th>
             </Table.Tr>
             {activeUserIds.map(userId => {
                 const user = userMap.get(userId);
-                const capacity = user?.dailyCapacity ?? 8.0; // Default capacity
                 if (!user) return null;
 
                 return (
                     <Table.Tr key={userId}>
-                        <Table.Td className={classes.sticky_col}>
+                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`}>
                             <Group gap="xs">
                                 <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
                                 <Text size="xs">{user.name}</Text>
                             </Group>
                         </Table.Td>
-                        <Table.Td></Table.Td>
-                        <Table.Td></Table.Td>
+                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_footer}`}></Table.Td>
+                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_3} ${classes.sticky_footer}`}></Table.Td>
 
-                        {daysInMonth.map(day => {
-                            const dateStr = day.format('YYYY-MM-DD');
-                            const total = dailyTotals[userId]?.[dateStr] || 0;
-                            const isOverloaded = total > capacity;
+                        {columns.map(col => {
+                            const total = col.type === 'day'
+                                ? dailyTotals[userId]?.[col.date.format('YYYY-MM-DD')] || 0
+                                : col.dates.reduce((sum, day) => sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0), 0);
+                            
+                            const capacity = user.dailyCapacity ?? 8.0;
+                            const isOverloaded = col.type === 'day' 
+                                ? total > capacity
+                                : col.dates.some(d => (dailyTotals[userId]?.[d.format('YYYY-MM-DD')] || 0) > capacity);
+                            
                             return (
-                                <Table.Td key={dateStr} style={{ color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined }}>
+                                <Table.Td key={col.key} className={classes.sticky_footer} style={{ color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined, textAlign: 'right' }}>
                                     {total > 0 ? total.toFixed(1) : ''}
                                 </Table.Td>
                             );
@@ -202,22 +291,23 @@ const ResourceCapacityFooter = ({ users, elements, allocations, daysInMonth }: {
 };
 
 const GridRow = ({
-  node, level, days, allElements, users, assignedUsersMap, allocations, allPlanAllocations,
-  onPvChange, isReadOnly, onAddUser,
+  node, level, columns, allElements, users, assignedUsersMap, allocations, allPlanAllocations,
+  onPvChange, onBulkPvChange, isReadOnly, onAddUser,
   onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells
 }: {
-  node: TreeNode; level: number; days: dayjs.Dayjs[];
+  node: TreeNode; level: number; columns: Column[];
   allElements: WbsElementDetail[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
   allocations: AllocationMap;
   allPlanAllocations: PvAllocation[];
   onPvChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
+  onBulkPvChange: (payload: any[]) => void;
   isReadOnly: boolean;
   onAddUser: (wbsElementId: number, userId: number) => void;
-  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
-  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
-  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => void;
-  onCellMouseOver: (wbsElementId: number, userId: number, date: string) => void;
+  onCellKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, key: string) => void;
+  onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, key: string) => void;
+  onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, key: string) => void;
+  onCellMouseOver: (wbsElementId: number, userId: number, key: string) => void;
   selectedCells: Set<string>;
 }) => {
 
@@ -266,7 +356,7 @@ const GridRow = ({
     return Object.values(unassignedAllocs).some(alloc => alloc.pv > 0);
   }, [allocations, node.wbsElementId]);
 
-  const getRollupValue = (date: string): number => {
+  const getRollupValue = (column: Column): number => {
     const getIds = (n: TreeNode): number[] => [n.wbsElementId, ...n.children.flatMap(getIds)];
     const descendantIds = getIds(node);
     const activityDescendants = allElements.filter(el => descendantIds.includes(el.wbsElementId) && el.elementType === 'Activity');
@@ -275,7 +365,8 @@ const GridRow = ({
       const activityAllocs = allocations[activity.wbsElementId];
       if (!activityAllocs) return sum;
       return sum + Object.values(activityAllocs).reduce((userSum, userAllocs) => {
-        return userSum + (userAllocs[date]?.pv || 0);
+        const dates = column.type === 'day' ? [column.date] : column.dates;
+        return userSum + dates.reduce((dateSum, date) => dateSum + (userAllocs[date.format('YYYY-MM-DD')]?.pv || 0), 0);
       }, 0);
     }, 0);
   };
@@ -330,9 +421,9 @@ const GridRow = ({
             {nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : '-'}
         </Table.Td>
         
-        {days.map((day) => (
-          <Table.Td key={day.format('YYYY-MM-DD')} className={isActivity ? classes.activity_rollup_cell : classes.rollup_cell}>
-            {getRollupValue(day.format('YYYY-MM-DD')) > 0 ? getRollupValue(day.format('YYYY-MM-DD')).toFixed(1) : '-'}
+        {columns.map((col) => (
+          <Table.Td key={col.key} className={isActivity ? classes.activity_rollup_cell : classes.rollup_cell}>
+            {getRollupValue(col) > 0 ? getRollupValue(col).toFixed(1) : '-'}
           </Table.Td>
         ))}
       </Table.Tr>
@@ -406,12 +497,12 @@ const GridRow = ({
       {/* Child WBS Element Rows */}
       {node.children.map((child) => (
         <GridRow
-          key={child.id} node={child} level={level + 1} days={days}
+          key={child.id} node={child} level={level + 1} columns={columns}
           allElements={allElements} users={users}
           assignedUsersMap={assignedUsersMap}
           allocations={allocations}
           allPlanAllocations={allPlanAllocations}
-          onPvChange={onPvChange} isReadOnly={isReadOnly} onAddUser={onAddUser}
+          onPvChange={onPvChange} onBulkPvChange={onBulkPvChange} isReadOnly={isReadOnly} onAddUser={onAddUser}
           onCellKeyDown={onCellKeyDown} onCellPaste={onCellPaste}
           onCellMouseDown={onCellMouseDown} onCellMouseOver={onCellMouseOver}
           selectedCells={selectedCells}
@@ -424,6 +515,7 @@ const GridRow = ({
 // --- Main Component ---
 export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
+  const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [allocations, setAllocations] = useState<AllocationMap>({});
@@ -446,6 +538,40 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     }
     return days;
   }, [currentMonth]);
+
+  const columns = useMemo((): Column[] => {
+    if (viewMode === 'daily') {
+        return daysInMonth.map(d => ({
+            key: d.format('YYYY-MM-DD'),
+            type: 'day' as const,
+            date: d,
+        }));
+    }
+    
+    // Weekly
+    const weeksMap = new Map<string, dayjs.Dayjs[]>();
+    daysInMonth.forEach(day => {
+        // Use week() and year() to define a week uniquely. Using Monday as start of week.
+        const weekKey = `${day.year()}-W${day.week()}`;
+        if (!weeksMap.has(weekKey)) {
+            weeksMap.set(weekKey, []);
+        }
+        weeksMap.get(weekKey)!.push(day);
+    });
+
+    const weeklyColumns: WeekColumn[] = [];
+    for (const [key, dates] of weeksMap.entries()) {
+        const firstDay = dates[0];
+        const lastDay = dates[dates.length - 1];
+        weeklyColumns.push({
+            key: key,
+            type: 'week' as const,
+            label: `W${firstDay.week()} (${firstDay.format('M/D')}-${lastDay.format('M/D')})`,
+            dates: dates,
+        });
+    }
+    return weeklyColumns;
+  }, [daysInMonth, viewMode]);
 
   useEffect(() => {
     const handleMouseUp = () => setIsSelecting(false);
@@ -519,6 +645,37 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     }
   }, [planVersionId, daysInMonth]);
 
+  const handlePvChangeBulk = useCallback(async (payload: any[]) => {
+    if (!planVersionId || isReadOnly) return;
+    
+    setAllocations(prev => {
+        const newAllocs = JSON.parse(JSON.stringify(prev));
+        payload.forEach(item => {
+            const { wbsElementId, userId, date, plannedValue } = item;
+            if (!newAllocs[wbsElementId]) newAllocs[wbsElementId] = {};
+            if (!newAllocs[wbsElementId][userId]) newAllocs[wbsElementId][userId] = {};
+
+            if (plannedValue !== null && plannedValue > 0) {
+                newAllocs[wbsElementId][userId][date] = { id: prev[wbsElementId]?.[userId]?.[date]?.id || -1, pv: plannedValue };
+            } else {
+                if (newAllocs[wbsElementId]?.[userId]?.[date]) {
+                    delete newAllocs[wbsElementId][userId][date];
+                }
+            }
+        });
+        return newAllocs;
+    });
+
+    try {
+        await invoke('upsert_daily_allocations_bulk', { payload: { planVersionId, allocations: payload } });
+        const allAllocs = await invoke<PvAllocation[]>('list_all_allocations_for_plan_version', { planVersionId });
+        setAllPlanAllocations(allAllocs);
+    } catch (err) {
+        console.error("Bulk PV change failed:", err);
+        fetchAllData(); // Revert on error
+    }
+  }, [planVersionId, isReadOnly, fetchAllData]);
+
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
@@ -541,7 +698,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     return roots;
   }, [elements]);
 
-  const { activityRowIds, dateStrs } = useMemo(() => {
+  const { activityRowIds, columnKeys } = useMemo(() => {
     const rowIdTuples: { wbsId: number, userId: number }[] = [];
     const activities: WbsElementDetail[] = [];
     const traverse = (nodes: TreeNode[]) => {
@@ -563,20 +720,21 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
       }
     };
     traverse(tree);
-    const dates = daysInMonth.map(d => d.format('YYYY-MM-DD'));
-    return { activityRowIds: rowIdTuples, dateStrs: dates };
-  }, [tree, daysInMonth, assignedUsers, allocations]);
+    const keys = columns.map(c => c.key);
+    return { activityRowIds: rowIdTuples, columnKeys: keys };
+  }, [tree, columns, assignedUsers, allocations]);
 
-  const focusCell = (wbsElementId: number, userId: number, date: string) => {
-    const cell = document.getElementById(`cell-pv-${wbsElementId}-${userId}-${date}`);
+  const focusCell = (wbsElementId: number, userId: number, key: string) => {
+    const cell = document.getElementById(`cell-pv-${wbsElementId}-${userId}-${key}`);
     cell?.focus();
   };
 
-  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => {
+  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, key: string) => {
     e.preventDefault();
+    if (viewMode === 'weekly') return; // Selection not supported in weekly view yet.
     e.currentTarget.focus();
     setIsSelecting(true);
-    const cellId = `cell-pv-${wbsElementId}-${userId}-${date}`;
+    const cellId = `cell-pv-${wbsElementId}-${userId}-${key}`;
     
     const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
 
@@ -584,12 +742,12 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         const startIdParts = selectionAnchor.split('-');
         const startWbsId = Number(startIdParts[2]);
         const startUserId = Number(startIdParts[3]);
-        const startDate = startIdParts.slice(4).join('-');
+        const startKey = startIdParts.slice(4).join('-');
 
         const startRow = findRowIndex(startWbsId, startUserId);
-        const startCol = dateStrs.indexOf(startDate);
+        const startCol = columnKeys.indexOf(startKey);
         const endRow = findRowIndex(wbsElementId, userId);
-        const endCol = dateStrs.indexOf(date);
+        const endCol = columnKeys.indexOf(key);
 
         if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
             setSelectedCells(new Set([cellId]));
@@ -605,8 +763,8 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         for (let r = minRow; r <= maxRow; r++) {
             for (let c = minCol; c <= maxCol; c++) {
                 const rowInfo = activityRowIds[r];
-                const cellDate = dateStrs[c];
-                newSelectedCells.add(`cell-pv-${rowInfo.wbsId}-${rowInfo.userId}-${cellDate}`);
+                const cellKey = columnKeys[c];
+                newSelectedCells.add(`cell-pv-${rowInfo.wbsId}-${rowInfo.userId}-${cellKey}`);
             }
         }
         setSelectedCells(newSelectedCells);
@@ -616,20 +774,20 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     }
   };
 
-  const handleCellMouseOver = (wbsElementId: number, userId: number, date: string) => {
-    if (!isSelecting || !selectionAnchor) return;
+  const handleCellMouseOver = (wbsElementId: number, userId: number, key: string) => {
+    if (!isSelecting || !selectionAnchor || viewMode === 'weekly') return;
     
     const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
     
     const startIdParts = selectionAnchor.split('-');
     const startWbsId = Number(startIdParts[2]);
     const startUserId = Number(startIdParts[3]);
-    const startDate = startIdParts.slice(4).join('-');
+    const startKey = startIdParts.slice(4).join('-');
 
     const startRow = findRowIndex(startWbsId, startUserId);
-    const startCol = dateStrs.indexOf(startDate);
+    const startCol = columnKeys.indexOf(startKey);
     const endRow = findRowIndex(wbsElementId, userId);
-    const endCol = dateStrs.indexOf(date);
+    const endCol = columnKeys.indexOf(key);
 
     if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) return;
 
@@ -642,8 +800,8 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     for (let r = minRow; r <= maxRow; r++) {
         for (let c = minCol; c <= maxCol; c++) {
             const rowInfo = activityRowIds[r];
-            const cellDate = dateStrs[c];
-            newSelectedCells.add(`cell-pv-${rowInfo.wbsId}-${rowInfo.userId}-${cellDate}`);
+            const cellKey = columnKeys[c];
+            newSelectedCells.add(`cell-pv-${rowInfo.wbsId}-${rowInfo.userId}-${cellKey}`);
         }
     }
     setSelectedCells(newSelectedCells);
@@ -689,27 +847,27 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   };
 
   const handleCellKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string) => {
-      const { key } = e;
-      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
+    (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, key: string) => {
+      const { key: eventKey } = e;
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(eventKey) || viewMode === 'weekly') return;
       e.preventDefault();
 
       const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
       const rowIndex = findRowIndex(wbsElementId, userId);
-      const colIndex = dateStrs.indexOf(date);
+      const colIndex = columnKeys.indexOf(key);
 
-      if (key === 'ArrowUp' && rowIndex > 0) {
+      if (eventKey === 'ArrowUp' && rowIndex > 0) {
         const { wbsId, userId } = activityRowIds[rowIndex - 1];
-        focusCell(wbsId, userId, date);
-      } else if (key === 'ArrowDown' && rowIndex < activityRowIds.length - 1) {
+        focusCell(wbsId, userId, key);
+      } else if (eventKey === 'ArrowDown' && rowIndex < activityRowIds.length - 1) {
         const { wbsId, userId } = activityRowIds[rowIndex + 1];
-        focusCell(wbsId, userId, date);
-      } else if (key === 'ArrowLeft' && colIndex > 0) {
-        focusCell(wbsElementId, userId, dateStrs[colIndex - 1]);
-      } else if (key === 'ArrowRight' && colIndex < dateStrs.length - 1) {
-        focusCell(wbsElementId, userId, dateStrs[colIndex + 1]);
-      } else if (key === 'Delete' || key === 'Backspace') {
-        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-pv-${wbsElementId}-${userId}-${date}`]);
+        focusCell(wbsId, userId, key);
+      } else if (eventKey === 'ArrowLeft' && colIndex > 0) {
+        focusCell(wbsElementId, userId, columnKeys[colIndex - 1]);
+      } else if (eventKey === 'ArrowRight' && colIndex < columnKeys.length - 1) {
+        focusCell(wbsElementId, userId, columnKeys[colIndex + 1]);
+      } else if (eventKey === 'Delete' || eventKey === 'Backspace') {
+        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-pv-${wbsElementId}-${userId}-${key}`]);
         const payload = Array.from(cellsToUpdate).map(cellId => {
             const parts = cellId.split('-');
             const wbsId = Number(parts[2]);
@@ -718,29 +876,18 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
             return { wbsElementId: wbsId, userId: uId, date: d, plannedValue: null };
         });
 
-        setAllocations(prev => {
-            const newAllocs = JSON.parse(JSON.stringify(prev));
-            payload.forEach(item => {
-                if (newAllocs[item.wbsElementId]?.[item.userId]) {
-                    delete newAllocs[item.wbsElementId][item.userId][item.date];
-                }
-            });
-            return newAllocs;
-        });
-
         if (planVersionId) {
-            invoke('upsert_daily_allocations_bulk', { payload: { planVersionId, allocations: payload } })
-                .catch(err => { console.error("Bulk delete failed:", err); fetchAllData(); });
+            handlePvChangeBulk(payload);
         }
       }
     },
-    [activityRowIds, dateStrs, planVersionId, selectedCells, fetchAllData]
+    [activityRowIds, columnKeys, planVersionId, selectedCells, handlePvChangeBulk, viewMode]
   );
 
   const handleCellPaste = useCallback(
-    async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startUserId: number, startDate: string) => {
+    async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startUserId: number, startKey: string) => {
         e.preventDefault();
-        if (isReadOnly || !planVersionId) return;
+        if (isReadOnly || !planVersionId || viewMode === 'weekly') return;
 
         const pasteData = e.clipboardData.getData('text');
         let payload: { wbsElementId: number, userId: number, date: string, plannedValue: number | null }[] = [];
@@ -756,7 +903,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         } else {
             const rows = pasteData.split(/\r\n|\n|\r/);
             const startRowIndex = findRowIndex(startWbsId, startUserId);
-            const startColIndex = dateStrs.indexOf(startDate);
+            const startColIndex = columnKeys.indexOf(startKey);
             if (startRowIndex === -1 || startColIndex === -1) return;
 
             for (let i = 0; i < rows.length; i++) {
@@ -767,43 +914,24 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
 
                 for (let j = 0; j < rowData.length; j++) {
                     const currentColIndex = startColIndex + j;
-                    if (currentColIndex >= dateStrs.length) break;
+                    if (currentColIndex >= columnKeys.length) break;
                     const valueStr = rowData[j].trim();
                     const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
-                    payload.push({ wbsElementId: wbsId, userId, date: dateStrs[currentColIndex], plannedValue: value });
+                    payload.push({ wbsElementId: wbsId, userId, date: columnKeys[currentColIndex], plannedValue: value });
                 }
             }
         }
         
-        if (payload.length === 0) return;
-
-        setAllocations(prev => {
-            const newAllocs = JSON.parse(JSON.stringify(prev));
-            payload.forEach(item => {
-                if (!newAllocs[item.wbsElementId]) newAllocs[item.wbsElementId] = {};
-                if (!newAllocs[item.wbsElementId][item.userId]) newAllocs[item.wbsElementId][item.userId] = {};
-                if (item.plannedValue !== null && item.plannedValue > 0) {
-                    newAllocs[item.wbsElementId][item.userId][item.date] = { id: -1, pv: item.plannedValue };
-                } else {
-                    delete newAllocs[item.wbsElementId][item.userId][item.date];
-                }
-            });
-            return newAllocs;
-        });
-
-        try {
-            await invoke('upsert_daily_allocations_bulk', { payload: { planVersionId, allocations: payload } });
-        } catch (err) {
-            console.error("Bulk paste failed:", err);
-            fetchAllData();
+        if (payload.length > 0) {
+            handlePvChangeBulk(payload);
         }
     },
-    [activityRowIds, dateStrs, isReadOnly, planVersionId, fetchAllData, selectedCells]
+    [activityRowIds, columnKeys, isReadOnly, planVersionId, selectedCells, handlePvChangeBulk, viewMode]
   );
   
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
-      if (selectedCells.size === 0 || !e.clipboardData) return;
+      if (selectedCells.size === 0 || !e.clipboardData || viewMode === 'weekly') return;
       const activeEl = document.activeElement;
       if (!activeEl || !activeEl.id.startsWith('cell-pv-')) return;
       e.preventDefault();
@@ -815,24 +943,24 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
         const parts = cellId.split('-');
         const wbsId = Number(parts[2]);
         const userId = Number(parts[3]);
-        const date = parts.slice(4).join('-');
+        const key = parts.slice(4).join('-');
         const r = findRowIndex(wbsId, userId);
-        const c = dateStrs.indexOf(date);
+        const c = columnKeys.indexOf(key);
         if (r > -1 && c > -1) {
             minRow = Math.min(minRow, r); maxRow = Math.max(maxRow, r);
             minCol = Math.min(minCol, c); maxCol = Math.max(maxCol, c);
         }
-        return { r, c, wbsId, userId, date };
+        return { r, c, wbsId, userId, key };
       }).filter(item => item.r > -1 && item.c > -1);
 
       if (minRow === Infinity) return;
 
       const grid: (number | string)[][] = Array(maxRow - minRow + 1).fill(0).map(() => Array(maxCol - minCol + 1).fill(''));
       
-      cellCoords.forEach(({ r, c, wbsId, userId, date }) => {
-        const cellId = `cell-pv-${wbsId}-${userId}-${date}`;
+      cellCoords.forEach(({ r, c, wbsId, userId, key }) => {
+        const cellId = `cell-pv-${wbsId}-${userId}-${key}`;
         if (selectedCells.has(cellId)) {
-            const value = allocations[wbsId]?.[userId]?.[date]?.pv;
+            const value = allocations[wbsId]?.[userId]?.[key]?.pv;
             grid[r - minRow][c - minCol] = value ?? '';
         }
       });
@@ -843,7 +971,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
 
     document.addEventListener('copy', handleCopy);
     return () => document.removeEventListener('copy', handleCopy);
-  }, [selectedCells, allocations, activityRowIds, dateStrs]);
+  }, [selectedCells, allocations, activityRowIds, columnKeys, viewMode]);
 
   const changeMonth = (amount: number) => {
     setCurrentMonth(dayjs(currentMonth).add(amount, 'month').toDate());
@@ -858,6 +986,14 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
       <Group justify="space-between">
         <Title order={2}>Resource Allocation</Title>
         <Group>
+            <SegmentedControl
+              value={viewMode}
+              onChange={(value) => setViewMode(value as ViewMode)}
+              data={[
+                { label: 'Daily', value: 'daily' },
+                { label: 'Weekly', value: 'weekly' },
+              ]}
+            />
             <ActionIcon onClick={() => changeMonth(-1)} variant="default" aria-label="Previous month"><IconChevronLeft size={16} /></ActionIcon>
             <MonthPickerInput
                 value={currentMonth}
@@ -896,12 +1032,12 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
             <Table.Tbody>
               {tree.map(node => (
                 <GridRow
-                    key={node.id} node={node} level={0} days={daysInMonth}
+                    key={node.id} node={node} level={0} columns={columns}
                     allElements={elements} users={users}
                     assignedUsersMap={assignedUsers}
                     allocations={allocations}
                     allPlanAllocations={allPlanAllocations}
-                    onPvChange={handlePvChange} isReadOnly={isReadOnly}
+                    onPvChange={handlePvChange} onBulkPvChange={handlePvChangeBulk} isReadOnly={isReadOnly}
                     onAddUser={handleAddUserToActivity}
                     onCellKeyDown={handleCellKeyDown}
                     onCellPaste={handleCellPaste}
@@ -911,7 +1047,7 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
                 />
               ))}
             </Table.Tbody>
-            <ResourceCapacityFooter users={users} elements={elements} allocations={allocations} daysInMonth={daysInMonth} />
+            <ResourceCapacityFooter users={users} elements={elements} allocations={allocations} columns={columns} />
           </Table>
         </Box>
       )}
