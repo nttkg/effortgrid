@@ -313,13 +313,21 @@ const GridRow = ({
                 </Group>
               </Table.Td>
               <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                <Text size="sm" c="dimmed">{userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : ''}</Text>
+                <Text size="sm" c="dimmed">{totalAllocatedForUser > 0 ? totalAllocatedForUser.toFixed(1) : ''}</Text>
               </Table.Td>
-              {days.map(day => (
-                <Table.Td key={`${day.format()}-pv`} className={classes.data_cell} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
-                  <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[userId]?.[day.format('YYYY-MM-DD')]?.pv?.toFixed(1) || ''}</Text>
-                </Table.Td>
-              ))}
+              {days.map((day, dayIndex) => {
+                const ganttClassesPv = [];
+                if (dayIndex >= pvStartIndex && dayIndex <= pvEndIndex && pvStartIndex !== -1) {
+                    ganttClassesPv.push(classes.ganttBarPv);
+                    if (dayIndex === pvStartIndex) ganttClassesPv.push(classes.ganttEdgeStartPv);
+                    if (dayIndex === pvEndIndex) ganttClassesPv.push(classes.ganttEdgeEndPv);
+                }
+                return (
+                  <Table.Td key={`${day.format()}-pv`} className={`${classes.data_cell} ${ganttClassesPv.join(' ')}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+                    <Text size="sm" c="dimmed">{data[node.wbsElementId]?.[userId]?.[day.format('YYYY-MM-DD')]?.pv?.toFixed(1) || ''}</Text>
+                  </Table.Td>
+                )
+              })}
             </Table.Tr>
             {/* User AC Row */}
             <Table.Tr>

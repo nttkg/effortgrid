@@ -341,6 +341,22 @@ const GridRow = ({
       {isActivity && usersToRender.map(userId => {
         const user = userMap.get(userId);
         const isUnassigned = userId === 0;
+
+        const userAllocs = allocations[node.wbsElementId]?.[userId];
+        let startIndex = -1, endIndex = -1;
+
+        if (userAllocs) {
+          days.forEach((day, index) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            if (userAllocs[dateStr]?.pv > 0) {
+              if (startIndex === -1) {
+                startIndex = index;
+              }
+              endIndex = index;
+            }
+          });
+        }
+        
         return (
           <Table.Tr key={`${node.wbsElementId}-${userId}`}>
             <Table.Td className={classes.sticky_col}>
@@ -354,11 +370,19 @@ const GridRow = ({
                 {userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : '-'}
             </Table.Td>
 
-            {days.map((day) => {
+            {days.map((day, dayIndex) => {
               const dateStr = day.format('YYYY-MM-DD');
               const cellId = `cell-pv-${node.wbsElementId}-${userId}-${dateStr}`;
+              
+              const ganttClasses = [];
+              if (dayIndex >= startIndex && dayIndex <= endIndex && startIndex !== -1) {
+                  ganttClasses.push(classes.ganttBar);
+                  if (dayIndex === startIndex) ganttClasses.push(classes.ganttEdgeStart);
+                  if (dayIndex === endIndex) ganttClasses.push(classes.ganttEdgeEnd);
+              }
+
               return (
-                <Table.Td key={dateStr} style={{ padding: 0 }}>
+                <Table.Td key={dateStr} style={{ padding: 0 }} className={ganttClasses.join(' ')}>
                   <PvInputCell
                     wbsElementId={node.wbsElementId}
                     userId={userId}

@@ -22,3 +22,98 @@
 .form_section {
     max-width: 400px;
 }
+
+.table_container {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    --col-width-wbs: 22rem;
+    --col-width-total: 6rem;
+}
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 100%;
+}
+.sticky_header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--mantine-color-body);
+}
+.sticky_footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background-color: var(--mantine-color-gray-0);
+    border-top: 1px solid var(--mantine-color-gray-3);
+}
+.sticky_col {
+    position: sticky;
+    z-index: 1;
+    background-color: var(--mantine-color-body);
+    border-right: 1px solid var(--mantine-color-gray-3);
+}
+.sticky_col_1 { left: 0; }
+.sticky_col_2 { left: var(--col-width-wbs); }
+.day_header {
+  text-align: center;
+}
+.day_header_weekend {
+  color: var(--mantine-color-dimmed);
+}
+.ac_input {
+  input {
+    text-align: right;
+    padding: 0 var(--mantine-spacing-xs);
+    min-height: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+}
+.data_cell {
+    width: 2.5rem;
+    min-width: 2.5rem;
+}
+.rollup_cell {
+    text-align: right;
+    font-size: var(--mantine-font-size-sm);
+}
+.summary_col {
+    text-align: right;
+    font-size: var(--mantine-font-size-sm);
+}
+
+/* PV Gantt Bar */
+.ganttBarPv {
+  background-color: rgba(51, 154, 240, 0.1);
+  border-top: 1px solid rgba(51, 154, 240, 0.3);
+  border-bottom: 1px solid rgba(51, 154, 240, 0.3);
+}
+.ganttEdgeStartPv {
+  border-left: 2px solid #339af0;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+.ganttEdgeEndPv {
+  border-right: 2px solid #339af0;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* AC Gantt Bar */
+.ganttBarAc {
+  background-color: rgba(12, 166, 120, 0.1); /* Teal/Green */
+  border-top: 1px solid rgba(12, 166, 120, 0.3);
+  border-bottom: 1px solid rgba(12, 166, 120, 0.3);
+}
+.ganttEdgeStartAc {
+  border-left: 2px solid #0ca678;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+.ganttEdgeEndAc {
+  border-right: 2px solid #0ca678;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
