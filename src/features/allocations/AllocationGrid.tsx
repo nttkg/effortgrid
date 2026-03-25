@@ -388,7 +388,7 @@ const GridRow = ({
     <>
       {/* Main WBS Element Row (Project, WorkPackage, or Activity summary) */}
       <Table.Tr>
-        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_col_body}`} style={{width: 'var(--col-width-wbs)', minWidth: 'var(--col-width-wbs)'}}>
+        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{width: 'var(--col-width-wbs)', minWidth: 'var(--col-width-wbs)'}}>
           <Group gap="xs" style={{ paddingLeft: level * 20 }}>
             {isActivity && (
               <Menu shadow="md" width={200}>
@@ -413,9 +413,9 @@ const GridRow = ({
           </Group>
         </Table.Td>
 
-        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ width: '6rem', minWidth: '6rem' }}>{isActivity ? node.estimatedPv || '-' : (nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : '-')}</Table.Td>
+        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ width: '6rem', minWidth: '6rem' }}>{isActivity ? node.estimatedPv || '-' : (nodeTotalEstimated > 0 ? nodeTotalEstimated.toFixed(1) : '-')}</Table.Td>
         <Table.Td 
-            className={`${classes.sticky_col} ${classes.sticky_col_3} ${classes.sticky_col_body}`}
+            className={`${classes.sticky_col} ${classes.sticky_col_3}`}
             style={{ color: nodeTotalAllocated > nodeTotalEstimated ? 'var(--mantine-color-red-7)' : undefined, width: '6rem', minWidth: '6rem' }}
         >
             {nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : '-'}
@@ -449,14 +449,14 @@ const GridRow = ({
         
         return (
           <Table.Tr key={`${node.wbsElementId}-${userId}`}>
-            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_col_body}`}>
+            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1}`}>
               <Group gap="xs" style={{ paddingLeft: (level * 20) + 30 }}>
                 <Avatar size="sm" color={isUnassigned ? 'gray' : 'cyan'}>{isUnassigned ? '?' : user?.name.substring(0,2)}</Avatar>
                 <Text size="xs">{isUnassigned ? 'Unassigned' : (user?.name || `User ${userId}`)}</Text>
               </Group>
             </Table.Td>
-            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ width: '6rem', minWidth: '6rem' }}></Table.Td>
-            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_3} ${classes.sticky_col_body}`} style={{ width: '6rem', minWidth: '6rem' }}>
+            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ width: '6rem', minWidth: '6rem' }}></Table.Td>
+            <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_3}`} style={{ width: '6rem', minWidth: '6rem' }}>
                 {userTotalAllocated(userId) > 0 ? userTotalAllocated(userId).toFixed(1) : '-'}
             </Table.Td>
 

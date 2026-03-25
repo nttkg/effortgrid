@@ -271,7 +271,7 @@ const GridRow = ({
     <>
       {/* PV Row (Plan) */}
       <Table.Tr>
-        <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_col_body}`} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
+        <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
           <Group gap="xs" style={{ paddingLeft: level * 20 }}>
             {isActivity && (
               <Menu shadow="md" width={200}>
@@ -291,7 +291,7 @@ const GridRow = ({
             <Text size="sm" truncate>{node.title}</Text>
           </Group>
         </Table.Td>
-        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
           <Text size="sm" c="dimmed">{nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : ''}</Text>
         </Table.Td>
         {columns.map((col) => {
@@ -304,7 +304,7 @@ const GridRow = ({
       </Table.Tr>
       {/* AC Row (Actual) */}
       <Table.Tr>
-        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
+        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none' }}>
           <Text
             size="sm"
             fw={500}
@@ -354,13 +354,13 @@ const GridRow = ({
           <React.Fragment key={userId}>
             {/* User PV Row */}
             <Table.Tr>
-              <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_col_body}`} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+              <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>
                 <Group gap="xs" style={{ paddingLeft: (level * 20) + 30 }}>
                   <Avatar size="sm" color={isUnassigned ? 'gray' : 'blue'}>{isUnassigned ? '?' : user?.name.substring(0,2)}</Avatar>
                   <Text size="xs">{isUnassigned ? 'Unassigned' : user?.name}</Text>
                 </Group>
               </Table.Td>
-              <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
+              <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderBottom: 'none' }}>
                 <Text size="sm" c="dimmed">{totalAllocatedForUser > 0 ? totalAllocatedForUser.toFixed(1) : ''}</Text>
               </Table.Td>
               {columns.map((col, dayIndex) => {
@@ -382,7 +382,7 @@ const GridRow = ({
             </Table.Tr>
             {/* User AC Row */}
             <Table.Tr>
-              <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_col_body}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+              <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2}`} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>
                 <Text
                   size="sm"
                   fw={500}
