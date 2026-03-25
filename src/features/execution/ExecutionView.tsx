@@ -833,11 +833,6 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
-      if (selectedCells.size === 0 || !e.clipboardData) return;
-      const activeEl = document.activeElement;
-      if (!activeEl || !activeEl.id.startsWith('cell-ac-')) return;
-      e.preventDefault();
-
       if (selectedCells.size === 0 || !e.clipboardData || viewMode === 'weekly') return;
       const activeEl = document.activeElement;
       if (!activeEl || !activeEl.id.startsWith('cell-ac-')) return;
