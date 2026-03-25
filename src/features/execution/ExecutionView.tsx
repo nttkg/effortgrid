@@ -131,7 +131,7 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
     return (
         <Table.Tfoot>
             <Table.Tr>
-                <Table.Th className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`} style={{ zIndex: 1 }}>Resource Capacity (Actuals)</Table.Th>
+                <Table.Th className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`} style={{ zIndex: 1, width: 350, minWidth: 350 }}>Resource Capacity (Actuals)</Table.Th>
                 <Table.Th className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_footer}`} style={{ zIndex: 1 }}></Table.Th>
                 <Table.Th className={classes.sticky_footer} colSpan={columns.length}></Table.Th>
             </Table.Tr>
@@ -141,7 +141,7 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
 
                 return (
                     <Table.Tr key={userId}>
-                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`}>
+                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`} style={{ width: 350, minWidth: 350 }}>
                             <Group gap="xs">
                                 <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
                                 <Text size="xs">{user.name}</Text>
@@ -272,7 +272,7 @@ const GridRow = ({
     <>
       {/* PV Row (Plan) */}
       <Table.Tr>
-        <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+        <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)', width: 350, minWidth: 350 }}>
           <Group gap="xs" style={{ paddingLeft: level * 20 }}>
             {isActivity && (
               <Menu shadow="md" width={200}>
@@ -355,7 +355,7 @@ const GridRow = ({
           <React.Fragment key={userId}>
             {/* User PV Row */}
             <Table.Tr>
-              <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>
+              <Table.Td rowSpan={2} className={`${classes.sticky_col} ${classes.sticky_col_1}`} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none', width: 350, minWidth: 350 }}>
                 <Group gap="xs" style={{ paddingLeft: (level * 20) + 30 }}>
                   <Avatar size="sm" color={isUnassigned ? 'gray' : 'blue'}>{isUnassigned ? '?' : user?.name.substring(0,2)}</Avatar>
                   <Text size="xs">{isUnassigned ? 'Unassigned' : user?.name}</Text>
@@ -913,10 +913,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
       {!isLoading && !error && (
         <Box className={classes.table_container}>
-          <Table className={classes.table} withColumnBorders>
+          <Table className={classes.table} withColumnBorders stickyHeader stickyFooter>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th className={`${classes.sticky_header} ${classes.sticky_col} ${classes.sticky_col_1}`} style={{zIndex: 3}}>WBS Element</Table.Th>
+                <Table.Th className={`${classes.sticky_header} ${classes.sticky_col} ${classes.sticky_col_1}`} style={{zIndex: 3, width: 350, minWidth: 350}}>WBS Element</Table.Th>
                 <Table.Th className={`${classes.sticky_header} ${classes.sticky_col} ${classes.sticky_col_2}`} style={{width: '6rem', minWidth: '6rem', zIndex: 3}}>Total</Table.Th>
                 {columns.map((col) => {
                   if (col.type === 'day') {
