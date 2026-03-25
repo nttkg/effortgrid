@@ -131,13 +131,11 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
     return (
         <Table.Tfoot>
             <Table.Tr>
-                <Table.Th className={classes.sticky_col_header} style={{ top: 'var(--table-header-height)' }}>Resource Capacity (Actuals)</Table.Th>
-                <Table.Th colSpan={daysInMonth.length}></Table.Th>
-                <Table.Th></Table.Th>
+                <Table.Th className={classes.sticky_footer} colSpan={2}>Resource Capacity (Actuals)</Table.Th>
+                <Table.Th className={classes.sticky_footer} colSpan={columns.length}></Table.Th>
             </Table.Tr>
             {activeUserIds.map(userId => {
                 const user = userMap.get(userId);
-                const capacity = user?.dailyCapacity ?? 8.0; // Default capacity
                 if (!user) return null;
 
                 return (
