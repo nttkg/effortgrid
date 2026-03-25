@@ -18,7 +18,12 @@ import {
   Tooltip,
   rem,
   SegmentedControl,
+  Button,
+  Modal,
+  Textarea,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { MonthPickerInput } from '@mantine/dates';
 import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus } from '@tabler/icons-react';
 import { WbsElementDetail, WbsElementType, PvAllocation, User } from '../../types';
@@ -30,6 +35,12 @@ dayjs.extend(weekOfYear);
 
 
 // --- Types ---
+interface ImportRow {
+  level: number;
+  title: string;
+  estimatedPv: number | null;
+}
+
 type ViewMode = 'daily' | 'weekly';
 
 interface DayColumn {
@@ -523,6 +534,11 @@ const GridRow = ({
 // --- Main Component ---
 export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
+  const [importOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
+  const [importText, setImportText] = useState('');
+  const [parsedRows, setParsedRows] = useState<ImportRow[]>([]);
+  const [parseError, setParseError] = useState<string | null>(null);
+
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
@@ -580,6 +596,86 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
     }
     return weeklyColumns;
   }, [daysInMonth, viewMode]);
+
+  useEffect(() => {
+    if (!importText.trim()) {
+      setParsedRows([]);
+      setParseError(null);
+      return;
+    }
+
+    const lines = importText.trim().split(/\r\n|\n/);
+    const newRows: ImportRow[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+
+        const parts = line.split(/\t|,/);
+        if (parts.length < 2 || parts.length > 3) {
+            setParseError(`Line ${i+1}: Expected 2 or 3 columns, but found ${parts.length}.`);
+            setParsedRows([]);
+            return;
+        }
+
+        const level = parseInt(parts[0], 10);
+        if (isNaN(level) || level < 1 || level > 3) {
+            setParseError(`Line ${i+1}: Level must be a number (1, 2, or 3), but found '${parts[0]}'.`);
+            setParsedRows([]);
+            return;
+        }
+
+        const title = parts[1].trim();
+        if (!title) {
+            setParseError(`Line ${i+1}: Title cannot be empty.`);
+            setParsedRows([]);
+            return;
+        }
+        
+        let estimatedPv: number | null = null;
+        if (parts.length === 3 && parts[2].trim()) {
+            estimatedPv = parseFloat(parts[2]);
+            if (isNaN(estimatedPv)) {
+                setParseError(`Line ${i+1}: Estimated PV must be a number, but found '${parts[2]}'.`);
+                setParsedRows([]);
+                return;
+            }
+        }
+        
+        newRows.push({ level, title, estimatedPv });
+    }
+
+    setParsedRows(newRows);
+    setParseError(null);
+  }, [importText]);
+
+  const handleImportWbs = async () => {
+    if (!planVersionId || parsedRows.length === 0 || isReadOnly) return;
+
+    try {
+      const result = await invoke<number>('import_wbs_data', {
+        payload: {
+          planVersionId,
+          rows: parsedRows,
+        }
+      });
+      notifications.show({
+        title: 'Import Successful',
+        message: `Successfully imported ${result} WBS elements.`,
+        color: 'green',
+      });
+      closeImportModal();
+      setImportText('');
+      fetchAllData();
+    } catch (err: any) {
+      console.error('Failed to import WBS:', err);
+      notifications.show({
+        title: 'Import Failed',
+        message: typeof err === 'string' ? err : 'An unknown error occurred.',
+        color: 'red',
+      });
+    }
+  };
 
   useEffect(() => {
     const handleMouseUp = () => setIsSelecting(false);
@@ -991,8 +1087,56 @@ export function AllocationGrid({ planVersionId, isReadOnly }: GridProps) {
 
   return (
     <Stack h="100%">
+      <Modal opened={importOpened} onClose={closeImportModal} title="Import WBS from Clipboard" size="xl">
+        <Stack>
+          <Text size="sm">
+            Paste data from a spreadsheet (3 columns: Level, Title, Estimated PV).
+            The data should be tab-separated or comma-separated.
+          </Text>
+          <Textarea
+            value={importText}
+            onChange={(e) => setImportText(e.currentTarget.value)}
+            minRows={10}
+            autosize
+            placeholder={"1\tProject Alpha\n2\tWork Package 1\n3\tActivity 1.1\t80"}
+          />
+          {parseError && <Alert color="red" title="Parsing Error" icon={<IconAlertCircle />}>{parseError}</Alert>}
+          {parsedRows.length > 0 && (
+            <Box style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <Table withColumnBorders withRowBorders>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Level</Table.Th>
+                    <Table.Th>Title</Table.Th>
+                    <Table.Th>Est. PV</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {parsedRows.map((row, index) => (
+                    <Table.Tr key={index}>
+                      <Table.Td>{row.level}</Table.Td>
+                      <Table.Td style={{ paddingLeft: `${row.level * 1.5}rem` }}>{row.title}</Table.Td>
+                      <Table.Td>{row.estimatedPv}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Box>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeImportModal}>Cancel</Button>
+            <Button onClick={handleImportWbs} disabled={parsedRows.length === 0 || !!parseError || isReadOnly}>
+              Import {parsedRows.length} rows
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Group justify="space-between">
-        <Title order={2}>Resource Allocation</Title>
+        <Group>
+          <Title order={2}>Resource Allocation</Title>
+          {!isReadOnly && <Button size="xs" variant="default" onClick={openImportModal}>Import WBS</Button>}
+        </Group>
         <Group>
             <SegmentedControl
               value={viewMode}

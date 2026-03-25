@@ -173,6 +173,21 @@ pub struct ExecutionDataResult {
     actual_costs: Vec<ActualCost>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRow {
+    level: u8,
+    title: String,
+    estimated_pv: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportWbsDataPayload {
+    plan_version_id: i64,
+    rows: Vec<ImportRow>,
+}
+
 
 // ----- Tauri Commands -----
 
@@ -638,6 +653,90 @@ pub async fn get_execution_data(
         pv_allocations,
         actual_costs,
     })
+}
+
+#[tauri::command]
+pub async fn import_wbs_data(
+    pool: State<'_, SqlitePool>,
+    payload: ImportWbsDataPayload,
+) -> AppResult<u64> { // Returns number of rows imported
+    let mut tx = pool.begin().await.map_err(db::DbError::from)?;
+    let mut current_project_id: Option<i64> = None;
+    let mut current_wp_id: Option<i64> = None;
+    let mut count = 0;
+
+    let portfolio_id: i64 = sqlx::query_scalar("SELECT portfolio_id FROM plan_versions WHERE id = ?")
+        .bind(payload.plan_version_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db::DbError::from)?;
+
+    for row in payload.rows {
+        let parent_id = match row.level {
+            1 => None,
+            2 => current_project_id,
+            3 => current_wp_id,
+            _ => return Err(AppError::DbError(format!("Invalid level '{}' for row '{}'. Level must be 1, 2, or 3.", row.level, row.title))),
+        };
+
+        let element_type = match row.level {
+            1 => db::WbsElementType::Project,
+            2 => db::WbsElementType::WorkPackage,
+            3 => db::WbsElementType::Activity,
+            _ => unreachable!(),
+        };
+
+        if row.level == 2 && parent_id.is_none() {
+            return Err(AppError::DbError(format!(
+                "Invalid hierarchy: WorkPackage '{}' cannot be created without a parent Project.",
+                row.title
+            )));
+        }
+        if row.level == 3 && parent_id.is_none() {
+            return Err(AppError::DbError(format!(
+                "Invalid hierarchy: Activity '{}' cannot be created without a parent WorkPackage.",
+                row.title
+            )));
+        }
+
+        // 1. Create the immutable wbs_element (Global ID)
+        let wbs_element_id = sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
+            .bind(portfolio_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db::DbError::from)?
+            .last_insert_rowid();
+
+        // 2. Create the version-specific details for this plan version
+        sqlx::query(
+            "INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, title, element_type, estimated_pv)
+                VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(payload.plan_version_id)
+        .bind(wbs_element_id)
+        .bind(parent_id)
+        .bind(&row.title)
+        .bind(element_type)
+        .bind(row.estimated_pv)
+        .execute(&mut *tx)
+        .await
+        .map_err(db::DbError::from)?;
+        
+        count += 1;
+
+        match row.level {
+            1 => {
+                current_project_id = Some(wbs_element_id);
+                current_wp_id = None; // Reset WorkPackage parent when a new Project starts
+            },
+            2 => current_wp_id = Some(wbs_element_id),
+            3 => {}, // Activity does not become a parent
+            _ => unreachable!(),
+        }
+    }
+
+    tx.commit().await.map_err(db::DbError::from)?;
+    Ok(count)
 }
 
 // ----- User Management -----
