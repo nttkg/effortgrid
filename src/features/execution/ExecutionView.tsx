@@ -501,39 +501,6 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     return weeklyColumns;
   }, [daysInMonth, viewMode]);
 
-  const columns = useMemo((): Column[] => {
-    if (viewMode === 'daily') {
-        return daysInMonth.map(d => ({
-            key: d.format('YYYY-MM-DD'),
-            type: 'day' as const,
-            date: d,
-        }));
-    }
-    
-    // Weekly
-    const weeksMap = new Map<string, dayjs.Dayjs[]>();
-    daysInMonth.forEach(day => {
-        const weekKey = `${day.year()}-W${day.week()}`;
-        if (!weeksMap.has(weekKey)) {
-            weeksMap.set(weekKey, []);
-        }
-        weeksMap.get(weekKey)!.push(day);
-    });
-
-    const weeklyColumns: WeekColumn[] = [];
-    for (const [key, dates] of weeksMap.entries()) {
-        const firstDay = dates[0];
-        const lastDay = dates[dates.length - 1];
-        weeklyColumns.push({
-            key: key,
-            type: 'week' as const,
-            label: `W${firstDay.week()} (${firstDay.format('M/D')}-${lastDay.format('M/D')})`,
-            dates: dates,
-        });
-    }
-    return weeklyColumns;
-  }, [daysInMonth, viewMode]);
-
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
       setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); setAllPlanAllocations([]); return;
@@ -625,8 +592,14 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       for (const node of nodes) {
         if (node.elementType === 'Activity') {
           activities.push(node);
-          const usersForActivity = Array.from(assignedUsers[node.wbsElementId] || []);
-          usersForActivity.sort((a,b) => a - b).forEach(userId => {
+          const usersForActivity = new Set(assignedUsers[node.wbsElementId] || []);
+          
+          const unassignedData = executionData[node.wbsElementId]?.[0];
+          if (unassignedData && Object.values(unassignedData).some(d => d.pv && d.pv > 0)) {
+            usersForActivity.add(0);
+          }
+
+          Array.from(usersForActivity).sort((a,b) => a - b).forEach(userId => {
             rowIdTuples.push({ wbsId: node.wbsElementId, userId });
           });
         }
@@ -638,7 +611,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       activityRowIds: rowIdTuples,
       columnKeys: columns.map(c => c.key)
     };
-  }, [tree, columns, assignedUsers]);
+  }, [tree, columns, assignedUsers, executionData]);
 
   const handleAcChange = useCallback(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
     if (isReadOnly) return;
@@ -697,9 +670,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         const startDate = startIdParts.slice(4).join('-');
 
         const startRow = findRowIndex(startWbsId, startUserId);
-        const startCol = dateStrs.indexOf(startDate);
+        const startCol = columnKeys.indexOf(startDate);
         const endRow = findRowIndex(wbsElementId, userId);
-        const endCol = dateStrs.indexOf(date);
+        const endCol = columnKeys.indexOf(date);
 
         if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
             setSelectedCells(new Set([cellId]));
@@ -715,7 +688,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         for (let r = minRow; r <= maxRow; r++) {
             for (let c = minCol; c <= maxCol; c++) {
                 const rowInfo = activityRowIds[r];
-                newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${dateStrs[c]}`);
+                newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${columnKeys[c]}`);
             }
         }
         setSelectedCells(newSelectedCells);
@@ -735,9 +708,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     const startDate = startIdParts.slice(4).join('-');
 
     const startRow = findRowIndex(startWbsId, startUserId);
-    const startCol = dateStrs.indexOf(startDate);
+    const startCol = columnKeys.indexOf(startDate);
     const endRow = findRowIndex(wbsElementId, userId);
-    const endCol = dateStrs.indexOf(date);
+    const endCol = columnKeys.indexOf(date);
 
     if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) return;
 
@@ -750,7 +723,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     for (let r = minRow; r <= maxRow; r++) {
         for (let c = minCol; c <= maxCol; c++) {
             const rowInfo = activityRowIds[r];
-            newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${dateStrs[c]}`);
+            newSelectedCells.add(`cell-ac-${rowInfo.wbsId}-${rowInfo.userId}-${columnKeys[c]}`);
         }
     }
     setSelectedCells(newSelectedCells);
