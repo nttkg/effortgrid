@@ -23,8 +23,8 @@
     position: sticky;
     bottom: 0;
     z-index: 2;
-    background-color: var(--mantine-color-gray-0);
-    border-top: 1px solid var(--mantine-color-gray-3);
+    background-color: var(--mantine-color-dark-8);
+    border-top: 1px solid var(--mantine-color-dark-4);
 }
 
 .sticky_col {
