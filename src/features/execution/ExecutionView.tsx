@@ -302,6 +302,27 @@ const GridRow = ({
         const user = userMap.get(userId);
         const isUnassigned = userId === 0;
         const isLastUser = index === usersToRender.length - 1;
+        const totalAllocatedForUser = userTotalAllocated(userId);
+        const totalActualsForUser = userTotalActuals(userId);
+
+        const userEntries = data[node.wbsElementId]?.[userId];
+        let pvStartIndex = -1, pvEndIndex = -1;
+        let acStartIndex = -1, acEndIndex = -1;
+        if (userEntries) {
+          days.forEach((day, dayIndex) => {
+            const dateStr = day.format('YYYY-MM-DD');
+            const entry = userEntries[dateStr];
+            if (entry?.pv && entry.pv > 0) {
+              if (pvStartIndex === -1) pvStartIndex = dayIndex;
+              pvEndIndex = dayIndex;
+            }
+            if (entry?.ac?.value && entry.ac.value > 0) {
+              if (acStartIndex === -1) acStartIndex = dayIndex;
+              acEndIndex = dayIndex;
+            }
+          });
+        }
+
         return (
           <React.Fragment key={userId}>
             {/* User PV Row */}
@@ -332,13 +353,27 @@ const GridRow = ({
             {/* User AC Row */}
             <Table.Tr>
               <Table.Td style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
-                <Text size="sm" fw={500}>{userTotalActuals(userId) > 0 ? userTotalActuals(userId).toFixed(1) : ''}</Text>
+                <Text
+                  size="sm"
+                  fw={500}
+                  style={{ color: totalActualsForUser > totalAllocatedForUser ? 'var(--mantine-color-red-7)' : undefined }}
+                >
+                  {totalActualsForUser > 0 ? totalActualsForUser.toFixed(1) : ''}
+                </Text>
               </Table.Td>
-              {days.map(day => {
+              {days.map((day, dayIndex) => {
                 const dateStr = day.format('YYYY-MM-DD');
                 const cellId = `cell-ac-${node.wbsElementId}-${userId}-${dateStr}`;
+
+                const ganttClassesAc = [];
+                if (dayIndex >= acStartIndex && dayIndex <= acEndIndex && acStartIndex !== -1) {
+                    ganttClassesAc.push(classes.ganttBarAc);
+                    if (dayIndex === acStartIndex) ganttClassesAc.push(classes.ganttEdgeStartAc);
+                    if (dayIndex === acEndIndex) ganttClassesAc.push(classes.ganttEdgeEndAc);
+                }
+
                 return (
-                  <Table.Td key={`${dateStr}-ac`} className={classes.data_cell} style={{ padding: 0, borderTop: 'none', textAlign: 'right', verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
+                  <Table.Td key={`${dateStr}-ac`} className={`${classes.data_cell} ${ganttClassesAc.join(' ')}`} style={{ padding: 0, borderTop: 'none', textAlign: 'right', verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-gray-3)' : 'none' }}>
                     <AcInputCell
                       wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
                       initialAc={data[node.wbsElementId]?.[userId]?.[dateStr]?.ac?.value}
