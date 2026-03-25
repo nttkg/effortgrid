@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon, Menu, Avatar, Tooltip, rem, SegmentedControl,
@@ -91,11 +91,12 @@ const AcInputCell = ({ wbsElementId, userId, date, initialAc, onCommit, isReadOn
   );
 };
 
-const ResourceCapacityFooter = ({ users, elements, data, columns }: {
+const ResourceCapacityFooter = ({ users, elements, data, columns, scrollRef }: {
     users: User[];
     elements: WbsElementDetail[];
     data: ExecutionMap;
     columns: Column[];
+    scrollRef: React.RefObject<HTMLDivElement>;
 }) => {
     const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
@@ -129,46 +130,59 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
     if (activeUserIds.length === 0) return null;
     
     return (
-        <Table.Tfoot>
-            <Table.Tr>
-                <Table.Th className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`} style={{ zIndex: 1, width: 350, minWidth: 350 }}>Resource Capacity (Actuals)</Table.Th>
-                <Table.Th className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_footer}`} style={{ zIndex: 1 }}></Table.Th>
-                <Table.Th className={classes.sticky_footer} colSpan={columns.length}></Table.Th>
-            </Table.Tr>
-            {activeUserIds.map(userId => {
-                const user = userMap.get(userId);
-                if (!user) return null;
+        <Box style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20, backgroundColor: 'var(--mantine-body-bg)', borderTop: '1px solid var(--mantine-color-dark-4)' }}>
+            <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+                <Table className={classes.table} withColumnBorders>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th style={{ position: 'sticky', left: 0, zIndex: 25, width: 350, minWidth: 350, backgroundColor: 'var(--mantine-body-bg)' }}>Resource Capacity (Actuals)</Table.Th>
+                            <Table.Th style={{ position: 'sticky', left: 350, zIndex: 25, width: '6rem', minWidth: '6rem', backgroundColor: 'var(--mantine-body-bg)' }}></Table.Th>
+                            {columns.map(col => {
+                                if (col.type === 'day') {
+                                    return <Table.Th key={col.key} style={{width: '2.8rem', minWidth: '2.8rem'}} />;
+                                }
+                                return <Table.Th key={col.key} style={{minWidth: '7rem'}} />;
+                            })}
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                    {activeUserIds.map(userId => {
+                        const user = userMap.get(userId);
+                        if (!user) return null;
 
-                return (
-                    <Table.Tr key={userId}>
-                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_1} ${classes.sticky_footer}`} style={{ width: 350, minWidth: 350 }}>
-                            <Group gap="xs">
-                                <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
-                                <Text size="xs">{user.name}</Text>
-                            </Group>
-                        </Table.Td>
-                        <Table.Td className={`${classes.sticky_col} ${classes.sticky_col_2} ${classes.sticky_footer}`}></Table.Td>
-
-                        {columns.map(col => {
-                            const total = col.type === 'day'
-                                ? dailyTotals[userId]?.[col.date.format('YYYY-MM-DD')] || 0
-                                : col.dates.reduce((sum, day) => sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0), 0);
-                            
-                            const capacity = user.dailyCapacity ?? 8.0;
-                            const isOverloaded = col.type === 'day' 
-                                ? total > capacity
-                                : col.dates.some(d => (dailyTotals[userId]?.[d.format('YYYY-MM-DD')] || 0) > capacity);
-
-                            return (
-                                <Table.Td key={col.key} className={classes.sticky_footer} style={{textAlign: 'right', color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined }}>
-                                    {total > 0 ? total.toFixed(1) : ''}
+                        return (
+                            <Table.Tr key={userId}>
+                                <Table.Td style={{ position: 'sticky', left: 0, zIndex: 25, width: 350, minWidth: 350, backgroundColor: 'var(--mantine-body-bg)' }}>
+                                    <Group gap="xs">
+                                        <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
+                                        <Text size="xs">{user.name}</Text>
+                                    </Group>
                                 </Table.Td>
-                            );
-                        })}
-                    </Table.Tr>
-                );
-            })}
-        </Table.Tfoot>
+                                <Table.Td style={{ position: 'sticky', left: 350, zIndex: 25, width: '6rem', minWidth: '6rem', backgroundColor: 'var(--mantine-body-bg)' }}></Table.Td>
+
+                                {columns.map(col => {
+                                    const total = col.type === 'day'
+                                        ? dailyTotals[userId]?.[col.date.format('YYYY-MM-DD')] || 0
+                                        : col.dates.reduce((sum, day) => sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0), 0);
+                                    
+                                    const capacity = user.dailyCapacity ?? 8.0;
+                                    const isOverloaded = col.type === 'day' 
+                                        ? total > capacity
+                                        : col.dates.some(d => (dailyTotals[userId]?.[d.format('YYYY-MM-DD')] || 0) > capacity);
+
+                                    return (
+                                        <Table.Td key={col.key} style={{textAlign: 'right', color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined }}>
+                                            {total > 0 ? total.toFixed(1) : ''}
+                                        </Table.Td>
+                                    );
+                                })}
+                            </Table.Tr>
+                        );
+                    })}
+                    </Table.Tbody>
+                </Table>
+            </div>
+        </Box>
     );
 };
 
@@ -442,6 +456,8 @@ const GridRow = ({
 // --- Main Component ---
 export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
+  const mainScrollContainerRef = useRef<HTMLDivElement>(null);
+  const footerScrollContainerRef = useRef<HTMLDivElement>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
@@ -568,6 +584,32 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     const handleMouseUp = () => setIsSelecting(false);
     window.addEventListener('mouseup', handleMouseUp);
     return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  useEffect(() => {
+    const mainEl = mainScrollContainerRef.current;
+    const footerEl = footerScrollContainerRef.current;
+    if (!mainEl || !footerEl) return;
+
+    let ignoreScroll = false;
+    const handleMainScroll = () => {
+        if (ignoreScroll) { ignoreScroll = false; return; }
+        ignoreScroll = true;
+        footerEl.scrollLeft = mainEl.scrollLeft;
+    };
+    const handleFooterScroll = () => {
+        if (ignoreScroll) { ignoreScroll = false; return; }
+        ignoreScroll = true;
+        mainEl.scrollLeft = footerEl.scrollLeft;
+    };
+
+    mainEl.addEventListener('scroll', handleMainScroll);
+    footerEl.addEventListener('scroll', handleFooterScroll);
+
+    return () => {
+        mainEl.removeEventListener('scroll', handleMainScroll);
+        footerEl.removeEventListener('scroll', handleFooterScroll);
+    };
   }, []);
 
   useEffect(() => { fetchAllData(); }, [fetchAllData]);
@@ -912,8 +954,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       {error && <Alert title="Error" color="red" icon={<IconAlertCircle />}>{error}</Alert>}
 
       {!isLoading && !error && (
-        <Box className={classes.table_container}>
-          <Table className={classes.table} withColumnBorders stickyHeader stickyFooter>
+        <>
+        <Box ref={mainScrollContainerRef} className={classes.table_container}>
+          <Table className={classes.table} withColumnBorders stickyHeader>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th className={`${classes.sticky_header} ${classes.sticky_col} ${classes.sticky_col_1}`} style={{zIndex: 3, width: 350, minWidth: 350}}>WBS Element</Table.Th>
@@ -954,9 +997,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                 />
               )}
             </Table.Tbody>
-            <ResourceCapacityFooter users={users} elements={elements} data={executionData} columns={columns} />
           </Table>
         </Box>
+        <ResourceCapacityFooter scrollRef={footerScrollContainerRef} users={users} elements={elements} data={executionData} columns={columns} />
+        </>
       )}
     </Stack>
   );
