@@ -675,7 +675,7 @@ pub async fn import_mapped_wbs(
 
     // Caches for performance
     let mut user_cache: HashMap<String, i64> = HashMap::new();
-    let users = db::list_users(&mut tx).await?;
+    let users = db::list_users(&mut *tx).await?;
     for user in users {
         user_cache.insert(user.name.clone(), user.id);
     }
@@ -695,14 +695,14 @@ pub async fn import_mapped_wbs(
                         .bind(plan_version_id)
                         .bind(title)
                         .bind(id)
-                        .fetch_optional(&mut tx)
+                        .fetch_optional(&mut *tx)
                         .await
                         .map_err(db::DbError::from)?
                 } else {
                     sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id IS NULL")
                         .bind(plan_version_id)
                         .bind(title)
-                        .fetch_optional(&mut tx)
+                        .fetch_optional(&mut *tx)
                         .await
                         .map_err(db::DbError::from)?
                 };
