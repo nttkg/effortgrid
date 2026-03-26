@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { MonthPickerInput } from '@mantine/dates';
-import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus } from '@tabler/icons-react';
+import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus, IconZoomOut, IconZoomIn } from '@tabler/icons-react';
 import { WbsElementDetail, WbsElementType, PvAllocation, ActualCost, ExecutionData, User } from '../../types';
 import { useUsers } from '../../hooks/useUsers';
 import { ImportWizardModal } from '../../components/ImportWizardModal';
@@ -446,6 +446,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
   const [importWizardOpened, { open: openImportWizard, close: closeImportWizard }] = useDisclosure(false);
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
+  const [zoomLevel, setZoomLevel] = useState(1.0);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [executionData, setExecutionData] = useState<ExecutionMap>({});
@@ -907,6 +908,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
             {!isReadOnly && <Button size="xs" variant="default" onClick={openImportWizard}>Import Data</Button>}
         </Group>
         <Group>
+          <ActionIcon variant="default" onClick={() => setZoomLevel(prev => Math.max(0.5, prev - 0.1))}><IconZoomOut size={16} /></ActionIcon>
+          <Text w={45} ta="center" size="sm" style={{ cursor: 'pointer' }} onClick={() => setZoomLevel(1.0)}>
+            {Math.round(zoomLevel * 100)}%
+          </Text>
+          <ActionIcon variant="default" onClick={() => setZoomLevel(prev => Math.min(2.0, prev + 0.1))}><IconZoomIn size={16} /></ActionIcon>
           <SegmentedControl
               value={viewMode}
               onChange={(value) => setViewMode(value as ViewMode)}
@@ -926,7 +932,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
       {!isLoading && !error && (
         <Box className={classes.table_container}>
-          <Table className={classes.table} withColumnBorders>
+          <Table className={classes.table} withColumnBorders style={{ zoom: zoomLevel } as any}>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th style={{width: 350, minWidth: 350}}>WBS Element</Table.Th>
