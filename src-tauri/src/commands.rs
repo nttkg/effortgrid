@@ -675,7 +675,7 @@ pub async fn import_mapped_wbs(
 
     // Caches for performance
     let mut user_cache: HashMap<String, i64> = HashMap::new();
-    let users = db::list_users(&mut *tx).await?;
+    let users = db::list_users(&mut *tx).await.map_err(db::DbError::from)?;
     for user in users {
         user_cache.insert(user.name.clone(), user.id);
     }
@@ -749,7 +749,7 @@ pub async fn import_mapped_wbs(
                 if let Some(id) = user_cache.get(assignee) {
                     Some(*id)
                 } else {
-                    let new_user = db::add_user(&mut *tx, assignee, "Member", None, None).await?;
+                    let new_user = db::add_user_tx(&mut tx, assignee, "Member", None, None).await?;
                     user_cache.insert(assignee.clone(), new_user.id);
                     Some(new_user.id)
                 }
@@ -759,11 +759,11 @@ pub async fn import_mapped_wbs(
             
             // Upsert PVs and ACs
             for (&date, &pv) in &row.daily_pvs {
-                db::upsert_daily_allocation(&mut *tx, plan_version_id, activity_wbs_id, user_id, date, Some(pv)).await?;
+                db::upsert_daily_allocation_tx(&mut tx, plan_version_id, activity_wbs_id, user_id, date, Some(pv)).await?;
             }
             if let Some(uid) = user_id { // AC requires a user
                 for (&date, &ac) in &row.daily_acs {
-                    db::upsert_actual_cost(&mut *tx, activity_wbs_id, uid, date, Some(ac)).await?;
+                    db::upsert_actual_cost_tx(&mut tx, activity_wbs_id, uid, date, Some(ac)).await?;
                 }
             }
         }

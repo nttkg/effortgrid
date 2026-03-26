@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 pub use sqlx::SqlitePool;
-use sqlx::FromRow;
+use sqlx::{FromRow, Executor, Sqlite, Transaction};
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
@@ -352,7 +352,19 @@ pub async fn upsert_daily_allocation(
     planned_value: Option<f64>,
 ) -> DbResult<()> {
     let mut tx = pool.begin().await?;
+    upsert_daily_allocation_tx(&mut tx, plan_version_id, wbs_element_id, user_id, date, planned_value).await?;
+    tx.commit().await?;
+    Ok(())
+}
 
+pub async fn upsert_daily_allocation_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    plan_version_id: i64,
+    wbs_element_id: i64,
+    user_id: Option<i64>,
+    date: NaiveDate,
+    planned_value: Option<f64>,
+) -> DbResult<()> {
     // Find existing allocation for this specific day
     let existing_id: Option<i64> = if let Some(uid) = user_id {
         sqlx::query_scalar(
@@ -408,7 +420,6 @@ pub async fn upsert_daily_allocation(
         (None, None) => {}
     }
 
-    tx.commit().await?;
     Ok(())
 }
 
@@ -667,7 +678,18 @@ pub async fn upsert_actual_cost(
     actual_cost: Option<f64>,
 ) -> DbResult<()> {
     let mut tx = pool.begin().await?;
+    upsert_actual_cost_tx(&mut tx, wbs_element_id, user_id, work_date, actual_cost).await?;
+    tx.commit().await?;
+    Ok(())
+}
 
+pub async fn upsert_actual_cost_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    wbs_element_id: i64,
+    user_id: i64,
+    work_date: NaiveDate,
+    actual_cost: Option<f64>,
+) -> DbResult<()> {
     let existing_id: Option<i64> = sqlx::query_scalar(
         "SELECT id FROM actual_costs WHERE wbs_element_id = ? AND user_id = ? AND work_date = ?",
     )
@@ -706,8 +728,6 @@ pub async fn upsert_actual_cost(
         }
         (None, None) => {}
     }
-
-    tx.commit().await?;
     Ok(())
 }
 
@@ -877,9 +897,12 @@ pub async fn add_progress_update(
     Ok(record)
 }
 
-pub async fn list_users(pool: &SqlitePool) -> DbResult<Vec<User>> {
+pub async fn list_users<'e, E>(executor: E) -> DbResult<Vec<User>>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY name")
-        .fetch_all(pool)
+        .fetch_all(executor)
         .await?;
     Ok(users)
 }
@@ -906,18 +929,31 @@ pub async fn add_user(
     email: Option<&str>,
     daily_capacity: Option<f64>,
 ) -> DbResult<User> {
+    let mut tx = pool.begin().await?;
+    let user = add_user_tx(&mut tx, name, role, email, daily_capacity).await?;
+    tx.commit().await?;
+    Ok(user)
+}
+
+pub async fn add_user_tx<'a>(
+    tx: &mut Transaction<'a, Sqlite>,
+    name: &str,
+    role: &str,
+    email: Option<&str>,
+    daily_capacity: Option<f64>,
+) -> DbResult<User> {
     let id = sqlx::query("INSERT INTO users (name, role, email, daily_capacity) VALUES (?, ?, ?, ?)")
         .bind(name)
         .bind(role)
         .bind(email)
         .bind(daily_capacity)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?
         .last_insert_rowid();
 
     let new_user = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(id)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
 
     Ok(new_user)
