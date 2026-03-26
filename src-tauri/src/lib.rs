@@ -48,6 +48,7 @@ pub fn run() {
             commands::get_evm_kpis,
             commands::get_s_curve_data,
             commands::get_execution_data,
+            commands::import_mapped_wbs,
             commands::get_filterable_wbs_nodes,
             // User Management Commands
             commands::list_users,
