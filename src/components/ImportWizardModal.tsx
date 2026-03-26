@@ -154,6 +154,9 @@ export function ImportWizardModal({
         const dailyAcs: Record<string, number> = {};
 
         columnMaps.forEach((map, colIndex) => {
+            // dailyPv または dailyAc 以外の列はスキップする
+            if (map.type !== 'dailyPv' && map.type !== 'dailyAc') return;
+            
             const valStr = row[colIndex]?.trim();
             if (valStr) {
                 const val = parseFloat(valStr);
