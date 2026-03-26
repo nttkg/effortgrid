@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
-  Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon, Menu, Avatar, Tooltip, rem, SegmentedControl,
+  Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon, Menu, Avatar, Tooltip, rem, SegmentedControl, Button,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { MonthPickerInput } from '@mantine/dates';
 import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus } from '@tabler/icons-react';
 import { WbsElementDetail, WbsElementType, PvAllocation, ActualCost, ExecutionData, User } from '../../types';
 import { useUsers } from '../../hooks/useUsers';
+import { ImportWizardModal } from '../../components/ImportWizardModal';
 import dayjs from 'dayjs';
 import classes from './ExecutionView.module.css';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -442,6 +446,7 @@ const GridRow = ({
 // --- Main Component ---
 export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
+  const [importWizardOpened, { open: openImportWizard, close: closeImportWizard }] = useDisclosure(false);
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
@@ -891,8 +896,18 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   return (
     <Stack h="100%">
+      <ImportWizardModal
+        opened={importWizardOpened}
+        onClose={closeImportWizard}
+        onSuccess={fetchAllData}
+        planVersionId={planVersionId}
+        isReadOnly={isReadOnly}
+      />
       <Group justify="space-between">
-        <Title order={2}>Execution Tracking (PV / AC)</Title>
+        <Group>
+            <Title order={2}>Execution Tracking (PV / AC)</Title>
+            {!isReadOnly && <Button size="xs" variant="default" onClick={openImportWizard}>Import Data</Button>}
+        </Group>
         <Group>
           <SegmentedControl
               value={viewMode}

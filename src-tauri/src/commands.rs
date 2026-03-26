@@ -173,20 +173,7 @@ pub struct ExecutionDataResult {
     actual_costs: Vec<ActualCost>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportRow {
-    level: u8,
-    title: String,
-    estimated_pv: Option<f64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportWbsDataPayload {
-    plan_version_id: i64,
-    rows: Vec<ImportRow>,
-}
+use std::collections::HashMap;
 
 
 // ----- Tauri Commands -----
@@ -656,87 +643,117 @@ pub async fn get_execution_data(
 }
 
 #[tauri::command]
-pub async fn import_wbs_data(
+pub async fn import_mapped_wbs(
     pool: State<'_, SqlitePool>,
-    payload: ImportWbsDataPayload,
-) -> AppResult<u64> { // Returns number of rows imported
-    let mut tx = pool.begin().await.map_err(db::DbError::from)?;
-    let mut current_project_id: Option<i64> = None;
-    let mut current_wp_id: Option<i64> = None;
-    let mut count = 0;
+    payload: ImportMappedWbsPayload,
+) -> AppResult<usize> {
+    let mut tx = pool.begin().await?;
+    let plan_version_id = payload.plan_version_id;
 
-    let portfolio_id: i64 = sqlx::query_scalar("SELECT portfolio_id FROM plan_versions WHERE id = ?")
-        .bind(payload.plan_version_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(db::DbError::from)?;
+    let portfolio_id: i64 =
+        sqlx::query_scalar("SELECT portfolio_id FROM plan_versions WHERE id = ?")
+            .bind(plan_version_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
-    for row in payload.rows {
-        let parent_id = match row.level {
-            1 => None,
-            2 => current_project_id,
-            3 => current_wp_id,
-            _ => return Err(AppError::DbError(format!("Invalid level '{}' for row '{}'. Level must be 1, 2, or 3.", row.level, row.title))),
-        };
+    // Caches for performance
+    let mut user_cache: HashMap<String, i64> = HashMap::new();
+    let users = db::list_users(&mut *tx).await?;
+    for user in users {
+        user_cache.insert(user.name.clone(), user.id);
+    }
+    let mut wbs_cache: HashMap<(Option<i64>, String), i64> = HashMap::new();
 
-        let element_type = match row.level {
-            1 => db::WbsElementType::Project,
-            2 => db::WbsElementType::WorkPackage,
-            3 => db::WbsElementType::Activity,
-            _ => unreachable!(),
-        };
+    for row in &payload.rows {
+        if row.hierarchy.is_empty() { continue; }
 
-        if row.level == 2 && parent_id.is_none() {
-            return Err(AppError::DbError(format!(
-                "Invalid hierarchy: WorkPackage '{}' cannot be created without a parent Project.",
-                row.title
-            )));
+        let mut parent_wbs_id: Option<i64> = None;
+        for (i, title) in row.hierarchy.iter().enumerate() {
+            let cache_key = (parent_wbs_id, title.clone());
+            if let Some(cached_id) = wbs_cache.get(&cache_key) {
+                parent_wbs_id = Some(*cached_id);
+            } else {
+                let existing_element: Option<(i64,)> = sqlx::query_as(
+                    "SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id "
+                )
+                .sql(if parent_wbs_id.is_some() { "= ?" } else { "IS NULL" })
+                .bind(plan_version_id)
+                .bind(title)
+                .bind(parent_wbs_id)
+                .fetch_optional(&mut *tx).await?;
+
+                let wbs_element_id = if let Some((id,)) = existing_element {
+                    id
+                } else {
+                    let new_wbs_id =
+                        sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
+                            .bind(portfolio_id)
+                            .execute(&mut *tx)
+                            .await?
+                            .last_insert_rowid();
+
+                    let element_type = if i == 0 {
+                        db::WbsElementType::Project
+                    } else if i == row.hierarchy.len() - 1 {
+                        db::WbsElementType::Activity
+                    } else {
+                        db::WbsElementType::WorkPackage
+                    };
+
+                    sqlx::query(
+                        "INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, title, element_type) VALUES (?, ?, ?, ?, ?)"
+                    )
+                    .bind(plan_version_id)
+                    .bind(new_wbs_id)
+                    .bind(parent_wbs_id)
+                    .bind(title)
+                    .bind(element_type)
+                    .execute(&mut *tx).await?;
+                    
+                    new_wbs_id
+                };
+                wbs_cache.insert(cache_key, wbs_element_id);
+                parent_wbs_id = Some(wbs_element_id);
+            }
         }
-        if row.level == 3 && parent_id.is_none() {
-            return Err(AppError::DbError(format!(
-                "Invalid hierarchy: Activity '{}' cannot be created without a parent WorkPackage.",
-                row.title
-            )));
-        }
 
-        // 1. Create the immutable wbs_element (Global ID)
-        let wbs_element_id = sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
-            .bind(portfolio_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(db::DbError::from)?
-            .last_insert_rowid();
+        if let Some(activity_wbs_id) = parent_wbs_id {
+            // Update Estimated PV for the activity
+            if let Some(pv) = row.estimated_pv {
+                 sqlx::query("UPDATE wbs_element_details SET estimated_pv = ? WHERE plan_version_id = ? AND wbs_element_id = ?")
+                    .bind(pv)
+                    .bind(plan_version_id)
+                    .bind(activity_wbs_id)
+                    .execute(&mut *tx).await?;
+            }
 
-        // 2. Create the version-specific details for this plan version
-        sqlx::query(
-            "INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, title, element_type, estimated_pv)
-                VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(payload.plan_version_id)
-        .bind(wbs_element_id)
-        .bind(parent_id)
-        .bind(&row.title)
-        .bind(element_type)
-        .bind(row.estimated_pv)
-        .execute(&mut *tx)
-        .await
-        .map_err(db::DbError::from)?;
-        
-        count += 1;
-
-        match row.level {
-            1 => {
-                current_project_id = Some(wbs_element_id);
-                current_wp_id = None; // Reset WorkPackage parent when a new Project starts
-            },
-            2 => current_wp_id = Some(wbs_element_id),
-            3 => {}, // Activity does not become a parent
-            _ => unreachable!(),
+            // Get or create user
+            let user_id: Option<i64> = if let Some(assignee) = &row.assignee {
+                if let Some(id) = user_cache.get(assignee) {
+                    Some(*id)
+                } else {
+                    let new_user = db::add_user(&mut *tx, assignee, "Member", None, None).await?;
+                    user_cache.insert(assignee.clone(), new_user.id);
+                    Some(new_user.id)
+                }
+            } else {
+                None
+            };
+            
+            // Upsert PVs and ACs
+            for (&date, &pv) in &row.daily_pvs {
+                db::upsert_daily_allocation(&mut *tx, plan_version_id, activity_wbs_id, user_id, date, Some(pv)).await?;
+            }
+            if let Some(uid) = user_id { // AC requires a user
+                for (&date, &ac) in &row.daily_acs {
+                    db::upsert_actual_cost(&mut *tx, activity_wbs_id, uid, date, Some(ac)).await?;
+                }
+            }
         }
     }
 
-    tx.commit().await.map_err(db::DbError::from)?;
-    Ok(count)
+    tx.commit().await?;
+    Ok(payload.rows.len())
 }
 
 // ----- User Management -----
