@@ -178,9 +178,13 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MappedImportRow {
+    pub wbs_id: Option<i64>,
     pub hierarchy: Vec<String>, // L1〜L10まで、存在する階層の文字列配列
     pub estimated_pv: Option<f64>,
     pub assignee: Option<String>,
+    pub description: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub element_type: Option<db::WbsElementType>,
     pub daily_pvs: HashMap<NaiveDate, f64>,
     pub daily_acs: HashMap<NaiveDate, f64>,
 }
@@ -682,90 +686,86 @@ pub async fn import_mapped_wbs(
     let mut wbs_cache: HashMap<(Option<i64>, String), i64> = HashMap::new();
 
     for row in &payload.rows {
-        if row.hierarchy.is_empty() { continue; }
+        let activity_wbs_id_opt: Option<i64> = if let Some(id) = row.wbs_id {
+            Some(id)
+        } else {
+            if row.hierarchy.is_empty() { continue; }
 
-        let mut parent_wbs_id: Option<i64> = None;
-        for (i, title) in row.hierarchy.iter().enumerate() {
-            let cache_key = (parent_wbs_id, title.clone());
-            if let Some(cached_id) = wbs_cache.get(&cache_key) {
-                parent_wbs_id = Some(*cached_id);
-            } else {
-                let existing_element: Option<(i64,)> = if let Some(id) = parent_wbs_id {
-                    sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id = ?")
-                        .bind(plan_version_id)
-                        .bind(title)
-                        .bind(id)
-                        .fetch_optional(&mut *tx)
-                        .await
-                        .map_err(db::DbError::from)?
+            let mut parent_wbs_id: Option<i64> = None;
+            for (i, title) in row.hierarchy.iter().enumerate() {
+                let cache_key = (parent_wbs_id, title.clone());
+                if let Some(cached_id) = wbs_cache.get(&cache_key) {
+                    parent_wbs_id = Some(*cached_id);
                 } else {
-                    sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id IS NULL")
-                        .bind(plan_version_id)
-                        .bind(title)
-                        .fetch_optional(&mut *tx)
-                        .await
-                        .map_err(db::DbError::from)?
-                };
-
-                let wbs_element_id = if let Some((id,)) = existing_element {
-                    id
-                } else {
-                    let new_wbs_id =
-                        sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
-                            .bind(portfolio_id)
-                            .execute(&mut *tx)
-                            .await.map_err(db::DbError::from)?
-                            .last_insert_rowid();
-
-                    let element_type = if i == 0 {
-                        db::WbsElementType::Project
-                    } else if i == row.hierarchy.len() - 1 {
-                        db::WbsElementType::Activity
+                     let existing_element: Option<(i64,)> = if let Some(id) = parent_wbs_id {
+                        sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id = ?")
+                            .bind(plan_version_id).bind(title).bind(id)
+                            .fetch_optional(&mut *tx).await.map_err(db::DbError::from)?
                     } else {
-                        db::WbsElementType::WorkPackage
+                        sqlx::query_as("SELECT wbs_element_id FROM wbs_element_details WHERE plan_version_id = ? AND title = ? AND parent_element_id IS NULL")
+                            .bind(plan_version_id).bind(title)
+                            .fetch_optional(&mut *tx).await.map_err(db::DbError::from)?
                     };
 
-                    sqlx::query(
-                        "INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, title, element_type) VALUES (?, ?, ?, ?, ?)"
-                    )
-                    .bind(plan_version_id)
-                    .bind(new_wbs_id)
-                    .bind(parent_wbs_id)
-                    .bind(title)
-                    .bind(element_type)
-                    .execute(&mut *tx).await.map_err(db::DbError::from)?;
-                    
-                    new_wbs_id
-                };
-                wbs_cache.insert(cache_key, wbs_element_id);
-                parent_wbs_id = Some(wbs_element_id);
-            }
-        }
+                    let wbs_element_id = if let Some((id,)) = existing_element {
+                        id
+                    } else {
+                        let new_wbs_id =
+                            sqlx::query("INSERT INTO wbs_elements (portfolio_id) VALUES (?)")
+                                .bind(portfolio_id).execute(&mut *tx).await.map_err(db::DbError::from)?
+                                .last_insert_rowid();
 
-        if let Some(activity_wbs_id) = parent_wbs_id {
-            // Update Estimated PV for the activity
-            if let Some(pv) = row.estimated_pv {
-                 sqlx::query("UPDATE wbs_element_details SET estimated_pv = ? WHERE plan_version_id = ? AND wbs_element_id = ?")
-                    .bind(pv)
-                    .bind(plan_version_id)
-                    .bind(activity_wbs_id)
+                        let element_type = if i == row.hierarchy.len() - 1 { db::WbsElementType::Activity }
+                            else if i == 0 { db::WbsElementType::Project }
+                            else { db::WbsElementType::WorkPackage };
+
+                        sqlx::query("INSERT INTO wbs_element_details (plan_version_id, wbs_element_id, parent_element_id, title, element_type) VALUES (?, ?, ?, ?, ?)")
+                            .bind(plan_version_id).bind(new_wbs_id).bind(parent_wbs_id).bind(title).bind(element_type)
+                            .execute(&mut *tx).await.map_err(db::DbError::from)?;
+                        
+                        new_wbs_id
+                    };
+                    wbs_cache.insert(cache_key, wbs_element_id);
+                    parent_wbs_id = Some(wbs_element_id);
+                }
+            }
+            parent_wbs_id
+        };
+
+        if let Some(activity_wbs_id) = activity_wbs_id_opt {
+            // --- Update details for the identified WBS element ---
+            let mut updates: Vec<&str> = Vec::new();
+            if row.description.is_some() { updates.push("description = ?"); }
+            if row.tags.is_some() { updates.push("tags = ?"); }
+            if row.element_type.is_some() { updates.push("element_type = ?"); }
+            if row.estimated_pv.is_some() { updates.push("estimated_pv = ?"); }
+            
+            if !updates.is_empty() {
+                let sql = format!("UPDATE wbs_element_details SET {} WHERE plan_version_id = ? AND wbs_element_id = ?", updates.join(", "));
+                let mut query = sqlx::query(&sql);
+                if let Some(d) = &row.description { query = query.bind(d); }
+                if let Some(t) = &row.tags {
+                    let tags_json = serde_json::to_string(t).map_err(|e| db::DbError::DbError(e.to_string()))?;
+                    query = query.bind(tags_json);
+                }
+                if let Some(et) = &row.element_type { query = query.bind(et); }
+                if let Some(pv) = row.estimated_pv { query = query.bind(pv); }
+
+                query.bind(plan_version_id).bind(activity_wbs_id)
                     .execute(&mut *tx).await.map_err(db::DbError::from)?;
             }
 
-            // Get or create user
+            // --- Get or create user ---
             let user_id: Option<i64> = if let Some(assignee) = &row.assignee {
-                if let Some(id) = user_cache.get(assignee) {
-                    Some(*id)
-                } else {
+                if let Some(id) = user_cache.get(assignee) { Some(*id) }
+                else {
                     let new_user = db::add_user_tx(&mut tx, assignee, "Member", None, None).await?;
                     user_cache.insert(assignee.clone(), new_user.id);
                     Some(new_user.id)
                 }
-            } else {
-                None
-            };
+            } else { None };
             
-            // Upsert PVs and ACs
+            // --- Upsert PVs and ACs ---
             for (&date, &pv) in &row.daily_pvs {
                 db::upsert_daily_allocation_tx(&mut tx, plan_version_id, activity_wbs_id, user_id, date, Some(pv)).await?;
             }

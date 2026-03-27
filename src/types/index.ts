@@ -112,3 +112,15 @@ export interface WidgetConfig {
   milestoneIds: number[];
   tags: string[];
 }
+
+export interface MappedImportRow {
+  wbsId: number | null;
+  hierarchy: string[];
+  estimatedPv: number | null;
+  assignee: string | null;
+  description: string | null;
+  tags: string[] | null;
+  elementType: WbsElementType | null;
+  dailyPvs: Record<string, number>;
+  dailyAcs: Record<string, number>;
+}

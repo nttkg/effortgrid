@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Modal,
@@ -14,6 +14,7 @@ import {
   Alert,
   Loader,
   LoadingOverlay,
+  SegmentedControl,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertCircle } from '@tabler/icons-react';
@@ -21,16 +22,22 @@ import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 dayjs.extend(customParseFormat);
 
+import { MappedImportRow, WbsElementType } from '../types';
+
 // --- Types ---
 
 const MAPPING_TYPES = [
   { value: 'ignore', label: 'Ignore' },
+  { value: 'wbsId', label: 'WBS ID' },
   ...Array.from({ length: 10 }, (_, i) => ({
     value: `L${i + 1}`,
     label: `L${i + 1} (Hierarchy)`,
   })),
   { value: 'estimatedPv', label: 'Est. PV' },
   { value: 'assignee', label: 'Assignee' },
+  { value: 'description', label: 'Description' },
+  { value: 'tags', label: 'Tags' },
+  { value: 'elementType', label: 'Type' },
   { value: 'dailyPv', label: 'Daily PV' },
   { value: 'dailyAc', label: 'Daily AC' },
 ];
@@ -43,14 +50,6 @@ const DATE_FORMATS = [
 interface ColumnMap {
   type: string;
   date?: string; // YYYY-MM-DD format if type is dailyPv or dailyAc
-}
-
-interface MappedImportRow {
-  hierarchy: string[];
-  estimatedPv: number | null;
-  assignee: string | null;
-  dailyPvs: Record<string, number>;
-  dailyAcs: Record<string, number>;
 }
 
 interface ImportWizardModalProps {
@@ -77,6 +76,7 @@ export function ImportWizardModal({
   const [previewRows, setPreviewRows] = useState<MappedImportRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [dateTarget, setDateTarget] = useState<'dailyPv' | 'dailyAc'>('dailyPv');
 
   // 1. Parse raw text into headers and data rows
   useEffect(() => {
@@ -100,15 +100,41 @@ export function ImportWizardModal({
 
     // 2. Auto-detect column types to create initial mapping
     const newMaps: ColumnMap[] = newHeaders.map(header => {
-      const trimmedHeader = header.trim();
-      const d = dayjs(trimmedHeader, DATE_FORMATS, true);
+      const lcHeader = header.trim().toLowerCase();
+      if (lcHeader === 'wbs id') return { type: 'wbsId' };
+      if (lcHeader === 'est. pv') return { type: 'estimatedPv' };
+      if (lcHeader === 'assignee') return { type: 'assignee' };
+      if (lcHeader === 'description') return { type: 'description' };
+      if (lcHeader === 'tags') return { type: 'tags' };
+      if (lcHeader === 'type') return { type: 'elementType' };
+      const lMatch = lcHeader.match(/^l([1-9]|10)$/i);
+      if (lMatch) return { type: `L${lMatch[1]}` };
+
+      const d = dayjs(header.trim(), DATE_FORMATS, true);
       if (d.isValid()) {
-        return { type: 'dailyPv', date: d.format('YYYY-MM-DD') };
+          return { type: dateTarget, date: d.format('YYYY-MM-DD') };
       }
       return { type: 'ignore' };
     });
     setColumnMaps(newMaps);
   }, [text]);
+
+  // Update date column mappings when dateTarget changes
+  useEffect(() => {
+    if (headers.length === 0) return;
+
+    setColumnMaps(currentMaps =>
+        currentMaps.map((map, index) => {
+            const header = headers[index].trim();
+            const d = dayjs(header, DATE_FORMATS, true);
+            // Only change columns that are date-like and were previously mapped as PV/AC
+            if (d.isValid() && (map.type === 'dailyPv' || map.type === 'dailyAc')) {
+                return { ...map, type: dateTarget };
+            }
+            return map;
+        })
+    );
+  }, [dateTarget, headers]);
 
   // 3. Generate preview data with fill-down logic whenever mappings or data changes
   useEffect(() => {
@@ -144,6 +170,16 @@ export function ImportWizardModal({
           const index = columnMaps.findIndex(m => m.type === type);
           return index !== -1 ? row[index]?.trim() || null : null;
         };
+
+        const wbsIdStr = getVal('wbsId');
+        const wbsId = wbsIdStr ? parseInt(wbsIdStr, 10) : null;
+        if (wbsIdStr && isNaN(wbsId!)) throw new Error(`Row ${rowIndex + 2}: Invalid number for WBS ID`);
+
+        const description = getVal('description');
+        const elementType = getVal('elementType') as WbsElementType | null; // Basic cast, no validation yet
+        const tagsStr = getVal('tags');
+        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : null;
+
         const pvStr = getVal('estimatedPv');
         const estimatedPv = pvStr ? parseFloat(pvStr) : null;
         if (pvStr && isNaN(estimatedPv)) throw new Error(`Row ${rowIndex+2}: Invalid number for Est. PV`);
@@ -154,7 +190,6 @@ export function ImportWizardModal({
         const dailyAcs: Record<string, number> = {};
 
         columnMaps.forEach((map, colIndex) => {
-            // dailyPv または dailyAc 以外の列はスキップする
             if (map.type !== 'dailyPv' && map.type !== 'dailyAc') return;
             
             const valStr = row[colIndex]?.trim();
@@ -167,7 +202,7 @@ export function ImportWizardModal({
             }
         });
 
-        return { hierarchy, estimatedPv, assignee, dailyPvs, dailyAcs };
+        return { wbsId, hierarchy, estimatedPv, assignee, description, tags, elementType, dailyPvs, dailyAcs };
       });
       setPreviewRows(newPreviewRows);
     } catch (e: any) {
@@ -235,10 +270,23 @@ export function ImportWizardModal({
         {headers.length > 0 && (
           <>
             <Text fw={500}>2. Map Columns</Text>
-            <Text size="sm" c="dimmed">
-              Map each column from your data to a field. 'L1' is the highest level (e.g., Project).
-              Date-like headers are automatically mapped to 'Daily PV'.
-            </Text>
+            <Group justify="space-between" align="center">
+              <Text size="sm" c="dimmed">
+                Map each column from your data to a field. 'L1' is the highest level (e.g., Project).
+              </Text>
+              <Group>
+                <Text size="sm" c="dimmed">Date columns target:</Text>
+                <SegmentedControl
+                  size="xs"
+                  value={dateTarget}
+                  onChange={setDateTarget as (value: 'dailyPv' | 'dailyAc') => void}
+                  data={[
+                      { label: 'Planned Value (PV)', value: 'dailyPv' },
+                      { label: 'Actual Cost (AC)', value: 'dailyAc' },
+                  ]}
+                />
+              </Group>
+            </Group>
             <ScrollArea>
               <Box style={{ minWidth: headers.length * 150 }}>
                 <Table withColumnBorders>
