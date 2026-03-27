@@ -313,6 +313,28 @@ pub async fn update_wbs_element_pv(
     Ok(rows_affected)
 }
 
+pub async fn update_wbs_element_details(
+    pool: &SqlitePool,
+    id: i64,
+    title: &str,
+    description: Option<&str>,
+    element_type: WbsElementType,
+    tags: Option<&str>,
+) -> DbResult<u64> {
+    let rows_affected = sqlx::query(
+        "UPDATE wbs_element_details SET title = ?, description = ?, element_type = ?, tags = ? WHERE id = ?"
+    )
+    .bind(title)
+    .bind(description)
+    .bind(&element_type)
+    .bind(tags)
+    .bind(id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(rows_affected)
+}
+
 pub async fn list_all_allocations_for_plan_version(
     pool: &SqlitePool,
     plan_version_id: i64,

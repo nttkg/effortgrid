@@ -17,6 +17,7 @@ import {
   Textarea,
   Alert,
   Box,
+  TagsInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useForm, zodResolver } from '@mantine/form';
@@ -56,69 +57,136 @@ function WbsElementRow({
   onOpenAllocation: (element: WbsElementDetail) => void;
   isReadOnly: boolean;
 }) {
+  const [title, setTitle] = useState(element.title);
+  const [description, setDescription] = useState(element.description || '');
+  const [elementType, setElementType] = useState(element.elementType);
+  const [tags, setTags] = useState<string[]>(() => {
+    try {
+      return element.tags ? JSON.parse(element.tags) : [];
+    } catch {
+      return [];
+    }
+  });
   const [pv, setPv] = useState(element.estimatedPv ?? '');
 
-  // 1秒間入力がなければDBを更新するデバウンス処理
-  const debouncedUpdate = useDebouncedCallback(async (newPvValue: number | null) => {
+  const debouncedUpdateDetails = useDebouncedCallback(async (details: any) => {
+    try {
+      await invoke('update_wbs_element_details', {
+        payload: { id: element.id, ...details },
+      });
+    } catch (error) {
+      notifications.show({ title: 'Update Failed', message: `Failed to update ${details.title}`, color: 'red' });
+      console.error('Failed to update details:', error);
+    }
+  }, 1000);
+
+  const handleDetailChange = <K extends 'title' | 'description' | 'elementType' | 'tags'>(field: K, value: any) => {
+    const currentState = { title, description, elementType, tags };
+    
+    if (field === 'title') {
+      setTitle(value);
+      currentState.title = value;
+    } else if (field === 'description') {
+      setDescription(value);
+      currentState.description = value;
+    } else if (field === 'elementType') {
+      setElementType(value);
+      currentState.elementType = value;
+    } else if (field === 'tags') {
+      setTags(value);
+      currentState.tags = value;
+    }
+
+    debouncedUpdateDetails(currentState);
+  };
+
+  const debouncedUpdatePv = useDebouncedCallback(async (newPvValue: number | null) => {
     try {
       await invoke('update_wbs_element_pv', {
         payload: { id: element.id, estimatedPv: newPvValue },
       });
     } catch (error) {
       console.error('Failed to update PV:', error);
-      // エラー通知をユーザーに表示する（オプション）
+      notifications.show({ title: 'Update Failed', message: `Failed to update PV for ${title}`, color: 'red' });
     }
   }, 1000);
 
   const handlePvChange = (value: string | number) => {
     setPv(value);
     const numericValue = value === '' ? null : Number(value);
-    debouncedUpdate(numericValue);
+    debouncedUpdatePv(numericValue);
   };
 
-  const getBadgeColor = (type: WbsElementType) => {
-    switch (type) {
-      case 'Project':
-        return 'blue';
-      case 'WorkPackage':
-        return 'cyan';
-      case 'Activity':
-        return 'teal';
-      default:
-        return 'gray';
+  const availableElementTypes = useMemo(() => {
+    if (element.children.length > 0) {
+      return ['Project', 'WorkPackage'];
     }
-  };
+    return ['Project', 'WorkPackage', 'Activity'];
+  }, [element.children.length]);
 
   return (
     <>
       <Table.Tr key={element.id}>
-        <Table.Td style={{ paddingLeft: `${level * 24 + 12}px` }}>{element.title}</Table.Td>
         <Table.Td>
-          <Badge color={getBadgeColor(element.elementType)}>{element.elementType}</Badge>
+          <div style={{ paddingLeft: level * 24 }}>
+            <TextInput
+              value={title}
+              onChange={(e) => handleDetailChange('title', e.currentTarget.value)}
+              variant="unstyled"
+              readOnly={isReadOnly}
+            />
+          </div>
         </Table.Td>
         <Table.Td>
-          {element.elementType === 'Activity' ? (
+          <Select
+            data={availableElementTypes}
+            value={elementType}
+            onChange={(val) => val && handleDetailChange('elementType', val as WbsElementType)}
+            variant="unstyled"
+            readOnly={isReadOnly}
+          />
+        </Table.Td>
+        <Table.Td>
+          {elementType === 'Activity' ? (
             <NumberInput
               value={pv}
               onChange={handlePvChange}
-              placeholder="Enter PV"
+              placeholder="-"
               hideControls
               min={0}
               style={{ width: 100 }}
               readOnly={isReadOnly}
+              variant="unstyled"
             />
           ) : (
-            <Text c="dimmed" size="sm">
-              -
-            </Text>
+            <Text c="dimmed" size="sm" style={{ paddingLeft: 'var(--mantine-spacing-sm)'}}>-</Text>
           )}
+        </Table.Td>
+        <Table.Td>
+          <TextInput
+            value={description}
+            onChange={(e) => handleDetailChange('description', e.currentTarget.value)}
+            variant="unstyled"
+            placeholder="Add note..."
+            readOnly={isReadOnly}
+          />
+        </Table.Td>
+        <Table.Td>
+          <TagsInput
+            value={tags}
+            onChange={(val) => handleDetailChange('tags', val)}
+            variant="unstyled"
+            placeholder="Add tags..."
+            clearable
+            readOnly={isReadOnly}
+          />
         </Table.Td>
         <Table.Td>
           <Tooltip label="Add child element">
             <ActionIcon
               variant="subtle"
               onClick={() => onAddChild(element)}
-              disabled={element.elementType === 'Activity' || isReadOnly}
+              disabled={elementType === 'Activity' || isReadOnly}
             >
               <IconSitemap size={16} />
             </ActionIcon>
@@ -128,7 +196,7 @@ function WbsElementRow({
               variant="subtle"
               color="blue"
               onClick={() => onOpenAllocation(element)}
-              disabled={element.elementType !== 'Activity' || isReadOnly}
+              disabled={elementType !== 'Activity' || isReadOnly}
             >
               <IconCalendarStats size={16} />
             </ActionIcon>
@@ -394,6 +462,8 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
             <Table.Th>WBS Title</Table.Th>
             <Table.Th>Type</Table.Th>
             <Table.Th>Estimated PV</Table.Th>
+            <Table.Th>Description</Table.Th>
+            <Table.Th>Tags</Table.Th>
             <Table.Th>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>

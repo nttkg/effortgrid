@@ -29,6 +29,7 @@ pub fn run() {
             commands::list_portfolios,
             commands::list_plan_versions_for_portfolio,
             commands::update_wbs_element_pv,
+            commands::update_wbs_element_details,
             commands::list_pv_allocations_for_wbs_element,
             commands::add_pv_allocation,
             commands::update_pv_allocation,

@@ -54,6 +54,16 @@ pub struct UpdateWbsElementPvPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateWbsElementDetailsPayload {
+    id: i64,
+    title: String,
+    description: Option<String>,
+    element_type: db::WbsElementType,
+    tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPvAllocationsPayload {
     wbs_element_id: i64,
     plan_version_id: i64,
@@ -275,6 +285,24 @@ pub async fn update_wbs_element_pv(
     }
 
     db::update_wbs_element_pv(&pool, payload.id, payload.estimated_pv).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_wbs_element_details(
+    pool: State<'_, SqlitePool>,
+    payload: UpdateWbsElementDetailsPayload,
+) -> AppResult<()> {
+    let tags_json = payload.tags.map(|t| serde_json::to_string(&t).unwrap_or_default());
+    db::update_wbs_element_details(
+        &pool,
+        payload.id,
+        &payload.title,
+        payload.description.as_deref(),
+        payload.element_type,
+        tags_json.as_deref(),
+    )
+    .await?;
     Ok(())
 }
 
