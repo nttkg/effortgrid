@@ -745,7 +745,7 @@ pub async fn import_mapped_wbs(
                 let mut query = sqlx::query(&sql);
                 if let Some(d) = &row.description { query = query.bind(d); }
                 if let Some(t) = &row.tags {
-                    let tags_json = serde_json::to_string(t).map_err(|e| db::DbError::DbError(e.to_string()))?;
+                    let tags_json = serde_json::to_string(t).map_err(|e| AppError::DbError(e.to_string()))?;
                     query = query.bind(tags_json);
                 }
                 if let Some(et) = &row.element_type { query = query.bind(et); }
