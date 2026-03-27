@@ -126,7 +126,7 @@ function WbsElementRow({
   }, [element.children.length]);
 
   return (
-    <>
+    <Stack h="100%">
       <Table.Tr key={element.id}>
         <Table.Td>
           <div style={{ paddingLeft: level * 24 }}>
