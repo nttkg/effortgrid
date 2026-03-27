@@ -398,7 +398,7 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
   }
 
   return (
-    <>
+    <Stack h="100%">
       <AllocationModal
         opened={allocModalOpened}
         onClose={closeAllocModal}
