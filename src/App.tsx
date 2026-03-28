@@ -23,7 +23,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
 import { z } from 'zod';
 import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy, IconBriefcase, IconUsers, IconDatabase } from '@tabler/icons-react';
-import { Portfolio, PlanVersion } from './types';
+import { Portfolio, PlanVersion, AppSettings } from './types';
 import { WbsListView } from './features/wbs/WbsListView';
 import { AllocationGrid } from './features/allocations/AllocationGrid';
 import { ExecutionView } from './features/execution/ExecutionView';
@@ -57,8 +57,10 @@ function App() {
     try {
       const result = await invoke<Portfolio[]>('list_portfolios');
       setPortfolios(result);
+      return result;
     } catch (error) {
       console.error('Failed to fetch portfolios:', error);
+      return [];
     }
   };
 
@@ -89,10 +91,17 @@ function App() {
       try {
         const path = await invoke<string | null>('get_current_db_path');
         setDbPath(path);
-        const settings = await invoke<any>('get_settings');
+        const settings = await invoke<AppSettings>('get_settings');
         setRecentPaths(settings.recentDbPaths || []);
         if (path) {
-          await fetchPortfolios();
+          const ports = await fetchPortfolios();
+          const savedPortfolioId = settings.projectSettings?.[path]?.selectedPortfolioId;
+          
+          if (savedPortfolioId && ports.find(p => String(p.id) === savedPortfolioId)) {
+            setSelectedPortfolioId(savedPortfolioId);
+          } else if (ports.length > 0) {
+            setSelectedPortfolioId(String(ports[0].id));
+          }
         }
       } catch (error) {
         console.error('Failed to init DB state:', error);
@@ -102,6 +111,21 @@ function App() {
     };
     initDb();
   }, []);
+
+  const handlePortfolioChange = async (id: string | null) => {
+    setSelectedPortfolioId(id);
+    if (dbPath && id) {
+      try {
+        const settings = await invoke<AppSettings>('get_settings');
+        if (!settings.projectSettings) settings.projectSettings = {};
+        if (!settings.projectSettings[dbPath]) settings.projectSettings[dbPath] = {};
+        settings.projectSettings[dbPath].selectedPortfolioId = id;
+        await invoke('update_settings', { settings });
+      } catch (e) {
+        console.error("Failed to save selected portfolio:", e);
+      }
+    }
+  };
 
   const handleOpenDb = async () => {
     const selected = await open({
@@ -126,9 +150,18 @@ function App() {
     try {
       await invoke('open_database_file', { path });
       setDbPath(path);
-      const settings = await invoke<any>('get_settings');
+      const settings = await invoke<AppSettings>('get_settings');
       setRecentPaths(settings.recentDbPaths || []);
-      await fetchPortfolios();
+      const ports = await fetchPortfolios();
+      
+      const savedPortfolioId = settings.projectSettings?.[path]?.selectedPortfolioId;
+      if (savedPortfolioId && ports.find(p => String(p.id) === savedPortfolioId)) {
+        setSelectedPortfolioId(savedPortfolioId);
+      } else if (ports.length > 0) {
+        setSelectedPortfolioId(String(ports[0].id));
+      } else {
+        setSelectedPortfolioId(null);
+      }
     } catch (e: any) {
       console.error("Failed to open db", e);
     }
@@ -274,7 +307,7 @@ function App() {
                 placeholder="Select a portfolio"
                 data={portfolioSelectData}
                 value={selectedPortfolioId}
-                onChange={setSelectedPortfolioId}
+                onChange={handlePortfolioChange}
                 clearable
                 style={{ width: 200 }}
               />

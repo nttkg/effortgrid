@@ -24,6 +24,7 @@ impl Default for DisplaySettings {
 pub struct ProjectSettings {
     pub dashboard: Option<serde_json::Value>,
     pub search_presets: Option<serde_json::Value>,
+    pub selected_portfolio_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

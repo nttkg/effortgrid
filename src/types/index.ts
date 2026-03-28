@@ -133,6 +133,7 @@ export interface DisplaySettings {
 export interface ProjectSettings {
   dashboard?: any;
   searchPresets?: any;
+  selectedPortfolioId?: string | null;
 }
 
 export interface AppSettings {
