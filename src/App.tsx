@@ -22,7 +22,7 @@ import { Notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm, zodResolver } from '@mantine/form';
 import { z } from 'zod';
-import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy, IconBriefcase, IconUsers } from '@tabler/icons-react';
+import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy, IconBriefcase, IconUsers, IconDatabase } from '@tabler/icons-react';
 import { Portfolio, PlanVersion } from './types';
 import { WbsListView } from './features/wbs/WbsListView';
 import { AllocationGrid } from './features/allocations/AllocationGrid';
@@ -269,23 +269,6 @@ function App() {
             <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
             <Burger opened={desktopOpened} onClick={toggleDesktop} visibleFrom="sm" size="sm" />
             <Title order={3}>EffortGrid</Title>
-            <Menu shadow="md" width={300}>
-              <Menu.Target>
-                <Button variant="subtle" color="gray" size="xs" style={{ maxWidth: 200, marginLeft: '1rem' }}>
-                  <Text truncate>{dbPath.split(/[\\/]/).pop()}</Text>
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>Database Options</Menu.Label>
-                <Menu.Item onClick={handleOpenDb}>Open Another Database...</Menu.Item>
-                <Menu.Item onClick={handleCreateDb}>Create New Database...</Menu.Item>
-                <Menu.Divider />
-                <Menu.Label>Recent</Menu.Label>
-                {recentPaths.map(p => (
-                  <Menu.Item key={p} onClick={() => openDatabasePath(p)}><Text size="xs" truncate>{p}</Text></Menu.Item>
-                ))}
-              </Menu.Dropdown>
-            </Menu>
             <Group style={{ flex: 1 }} justify="center">
               <Select
                 placeholder="Select a portfolio"
@@ -359,6 +342,30 @@ function App() {
           <Button onClick={openCreateModal} fullWidth leftSection={<IconPlus size={14} />} mt="xl">
             New Portfolio
           </Button>
+
+          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--mantine-color-default-border)', paddingTop: 'var(--mantine-spacing-md)' }}>
+            <Menu shadow="md" width={300} position="right-end">
+              <Menu.Target>
+                <Button variant="subtle" color="gray" fullWidth justify="flex-start" leftSection={<IconDatabase size={16} />}>
+                  <Text size="sm" truncate>{dbPath.split(/[\\/]/).pop()}</Text>
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Database Options</Menu.Label>
+                <Menu.Item onClick={handleOpenDb} leftSection={<IconDatabase size={14} />}>Open Another Database...</Menu.Item>
+                <Menu.Item onClick={handleCreateDb} leftSection={<IconPlus size={14} />}>Create New Database...</Menu.Item>
+                {recentPaths.length > 0 && (
+                  <>
+                    <Menu.Divider />
+                    <Menu.Label>Recent</Menu.Label>
+                    {recentPaths.map(p => (
+                      <Menu.Item key={p} onClick={() => openDatabasePath(p)}><Text size="xs" truncate>{p}</Text></Menu.Item>
+                    ))}
+                  </>
+                )}
+              </Menu.Dropdown>
+            </Menu>
+          </div>
         </AppShell.Navbar>
 
         <AppShell.Main>
