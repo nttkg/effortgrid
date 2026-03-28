@@ -18,9 +18,24 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let pool = tauri::async_runtime::block_on(db::init_db(&app_handle))
-                .expect("database initialization failed");
-            app.manage(pool);
+            let settings = settings::load_settings(&app_handle);
+            
+            let mut initial_pool = None;
+            let mut initial_path = None;
+            
+            // 履歴の最初のパスを開いてみる
+            if let Some(path) = settings.recent_db_paths.first() {
+                if let Ok(pool) = tauri::async_runtime::block_on(db::connect_db(path)) {
+                    initial_pool = Some(pool);
+                    initial_path = Some(path.clone());
+                }
+            }
+            
+            app.manage(db::AppState {
+                pool: tokio::sync::RwLock::new(initial_pool),
+                current_db_path: tokio::sync::RwLock::new(initial_path),
+            });
+            
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -55,6 +70,8 @@ pub fn run() {
             commands::get_filterable_wbs_nodes,
             commands::get_settings,
             commands::update_settings,
+            commands::open_database_file,
+            commands::get_current_db_path,
             // User Management Commands
             commands::list_users,
             commands::add_user,

@@ -4,6 +4,7 @@ pub use sqlx::SqlitePool;
 use sqlx::{FromRow, Executor, Sqlite, Transaction};
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -16,41 +17,22 @@ pub enum DbError {
 // データベース操作用のカスタムResult型
 pub type DbResult<T> = Result<T, DbError>;
 
-/// データベース接続を初期化します。
-/// データベースファイルが存在しない場合は作成し、マイグレーションを実行します。
-pub async fn init_db(app_handle: &AppHandle) -> DbResult<SqlitePool> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .expect("failed to get app data dir");
-    if !app_data_dir.exists() {
-        std::fs::create_dir_all(&app_data_dir).expect("failed to create app data dir");
-    }
-    let db_path = app_data_dir.join("sqlite.db");
-    // `?mode=rwc` (read-write-create) はファイルの自動作成を処理します。
-    let db_url = format!(
-        "sqlite:{}?mode=rwc",
-        db_path.to_str().expect("DB path is not valid UTF-8")
-    );
+pub struct AppState {
+    pub pool: RwLock<Option<SqlitePool>>,
+    pub current_db_path: RwLock<Option<String>>,
+}
 
+pub async fn connect_db(db_path: &str) -> DbResult<SqlitePool> {
+    let db_url = format!("sqlite:{}?mode=rwc", db_path);
     let pool = SqlitePool::connect(&db_url).await?;
-
-    // 起動時にマイグレーションを自動実行します。
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    // --- Seed initial data ---
-    // Create a default user if none exists. This is necessary for
-    // creating actual_costs and progress_updates which require a user_id.
-    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&pool)
-        .await?;
-
+    // Seed initial data
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
     if user_count == 0 {
         sqlx::query("INSERT INTO users (id, name, role, email) VALUES (1, 'Default User', 'Developer', 'default@example.com')")
-            .execute(&pool)
-            .await?;
+            .execute(&pool).await?;
     }
-
     Ok(pool)
 }
 

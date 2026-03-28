@@ -212,10 +212,12 @@ pub struct ImportMappedWbsPayload {
 
 #[tauri::command]
 pub async fn create_portfolio(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     name: String,
 ) -> AppResult<CreatePortfolioResult> {
-    let (portfolio, plan_version) = db::create_portfolio(&pool, &name).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let (portfolio, plan_version) = db::create_portfolio(pool, &name).await?;
     Ok(CreatePortfolioResult {
         portfolio,
         initial_plan_version: plan_version,
@@ -224,11 +226,13 @@ pub async fn create_portfolio(
 
 #[tauri::command]
 pub async fn add_wbs_element(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: AddWbsElementPayload,
 ) -> AppResult<WbsElementDetail> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let new_element = db::add_wbs_element(
-        &pool,
+        pool,
         payload.plan_version_id,
         payload.parent_element_id,
         payload.milestone_id,
@@ -244,38 +248,46 @@ pub async fn add_wbs_element(
 
 #[tauri::command]
 pub async fn list_wbs_elements(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     plan_version_id: i64,
 ) -> AppResult<Vec<WbsElementDetail>> {
-    let elements = db::list_wbs_elements(&pool, plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let elements = db::list_wbs_elements(pool, plan_version_id).await?;
     Ok(elements)
 }
 
 #[tauri::command]
-pub async fn list_portfolios(pool: State<'_, SqlitePool>) -> AppResult<Vec<Portfolio>> {
-    let portfolios = db::list_portfolios(&pool).await?;
+pub async fn list_portfolios(state: State<'_, crate::db::AppState>) -> AppResult<Vec<Portfolio>> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let portfolios = db::list_portfolios(pool).await?;
     Ok(portfolios)
 }
 
 #[tauri::command]
 pub async fn list_plan_versions_for_portfolio(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     portfolio_id: i64,
 ) -> AppResult<Vec<PlanVersion>> {
-    let versions = db::list_plan_versions_for_portfolio(&pool, portfolio_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let versions = db::list_plan_versions_for_portfolio(pool, portfolio_id).await?;
     Ok(versions)
 }
 
 #[tauri::command]
 pub async fn update_wbs_element_pv(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpdateWbsElementPvPayload,
 ) -> AppResult<()> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     // ARCHITECTURE.md: "末端入力の原則" を適用
     let element_type: String =
         sqlx::query_scalar("SELECT element_type FROM wbs_element_details WHERE id = ?")
             .bind(payload.id)
-            .fetch_one(&*pool)
+            .fetch_one(pool)
             .await
             .map_err(db::DbError::from)?;
 
@@ -285,18 +297,20 @@ pub async fn update_wbs_element_pv(
         ));
     }
 
-    db::update_wbs_element_pv(&pool, payload.id, payload.estimated_pv).await?;
+    db::update_wbs_element_pv(pool, payload.id, payload.estimated_pv).await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn update_wbs_element_details(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpdateWbsElementDetailsPayload,
 ) -> AppResult<()> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let tags_json = payload.tags.map(|t| serde_json::to_string(&t).unwrap_or_default());
     db::update_wbs_element_details(
-        &pool,
+        pool,
         payload.id,
         &payload.title,
         payload.description.as_deref(),
@@ -309,11 +323,13 @@ pub async fn update_wbs_element_details(
 
 #[tauri::command]
 pub async fn list_pv_allocations_for_wbs_element(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: ListPvAllocationsPayload,
 ) -> AppResult<Vec<PvAllocation>> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let allocations = db::list_pv_allocations_for_wbs_element(
-        &pool,
+        pool,
         payload.wbs_element_id,
         payload.plan_version_id,
     )
@@ -452,13 +468,15 @@ async fn check_are_activities(
 
 #[tauri::command]
 pub async fn add_pv_allocation(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: AddPvAllocationPayload,
 ) -> AppResult<PvAllocation> {
-    check_is_activity(&pool, payload.wbs_element_id, payload.plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    check_is_activity(pool, payload.wbs_element_id, payload.plan_version_id).await?;
 
     let new_allocation = db::add_pv_allocation(
-        &pool,
+        pool,
         payload.plan_version_id,
         payload.wbs_element_id,
         payload.user_id,
@@ -472,12 +490,14 @@ pub async fn add_pv_allocation(
 
 #[tauri::command]
 pub async fn update_pv_allocation(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpdatePvAllocationPayload,
 ) -> AppResult<PvAllocation> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     // No need to check type on update, as it's an existing allocation linked to an activity.
     let updated_allocation = db::update_pv_allocation(
-        &pool,
+        pool,
         payload.id,
         payload.start_date,
         payload.end_date,
@@ -488,36 +508,44 @@ pub async fn update_pv_allocation(
 }
 
 #[tauri::command]
-pub async fn delete_pv_allocation(pool: State<'_, SqlitePool>, id: i64) -> AppResult<()> {
-    db::delete_pv_allocation(&pool, id).await?;
+pub async fn delete_pv_allocation(state: State<'_, crate::db::AppState>, id: i64) -> AppResult<()> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    db::delete_pv_allocation(pool, id).await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn list_all_allocations_for_plan_version(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     plan_version_id: i64,
 ) -> AppResult<Vec<PvAllocation>> {
-    let allocations = db::list_all_allocations_for_plan_version(&pool, plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let allocations = db::list_all_allocations_for_plan_version(pool, plan_version_id).await?;
     Ok(allocations)
 }
 
 #[tauri::command]
 pub async fn list_all_actuals_for_plan_version(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     plan_version_id: i64,
 ) -> AppResult<Vec<ActualCost>> {
-    let actuals = db::list_all_actuals_for_plan_version(&pool, plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let actuals = db::list_all_actuals_for_plan_version(pool, plan_version_id).await?;
     Ok(actuals)
 }
 
 #[tauri::command]
 pub async fn list_allocations_for_period(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: ListAllocationsForPeriodPayload,
 ) -> AppResult<Vec<PvAllocation>> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let allocations = db::list_allocations_for_period(
-        &pool,
+        pool,
         payload.plan_version_id,
         payload.start_date,
         payload.end_date,
@@ -528,13 +556,15 @@ pub async fn list_allocations_for_period(
 
 #[tauri::command]
 pub async fn upsert_daily_allocation(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpsertDailyAllocationPayload,
 ) -> AppResult<()> {
-    check_is_activity(&pool, payload.wbs_element_id, payload.plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    check_is_activity(pool, payload.wbs_element_id, payload.plan_version_id).await?;
 
     db::upsert_daily_allocation(
-        &pool,
+        pool,
         payload.plan_version_id,
         payload.wbs_element_id,
         payload.user_id,
@@ -547,34 +577,40 @@ pub async fn upsert_daily_allocation(
 
 #[tauri::command]
 pub async fn upsert_daily_allocations_bulk(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpsertDailyAllocationsBulkPayload,
 ) -> AppResult<()> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let wbs_ids: Vec<i64> = payload.allocations.iter().map(|a| a.wbs_element_id).collect();
-    check_are_activities(&pool, &wbs_ids, payload.plan_version_id).await?;
+    check_are_activities(pool, &wbs_ids, payload.plan_version_id).await?;
 
-    db::upsert_daily_allocations_bulk(&pool, payload.plan_version_id, &payload.allocations).await?;
+    db::upsert_daily_allocations_bulk(pool, payload.plan_version_id, &payload.allocations).await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn create_baseline(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: CreateBaselinePayload,
 ) -> AppResult<PlanVersion> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let new_baseline =
-        db::create_baseline(&pool, payload.portfolio_id, &payload.baseline_name).await?;
+        db::create_baseline(pool, payload.portfolio_id, &payload.baseline_name).await?;
     Ok(new_baseline)
 }
 
 #[tauri::command]
 pub async fn add_actual_cost(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: AddActualCostPayload,
 ) -> AppResult<ActualCost> {
-    check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     let record = db::add_actual_cost(
-        &pool,
+        pool,
         payload.wbs_element_id,
         payload.user_id,
         payload.work_date,
@@ -586,12 +622,14 @@ pub async fn add_actual_cost(
 
 #[tauri::command]
 pub async fn upsert_actual_cost(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpsertActualCostPayload,
 ) -> AppResult<()> {
-    check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     db::upsert_actual_cost(
-        &pool,
+        pool,
         payload.wbs_element_id,
         payload.user_id,
         payload.work_date,
@@ -603,35 +641,41 @@ pub async fn upsert_actual_cost(
 
 #[tauri::command]
 pub async fn upsert_actual_costs_bulk(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpsertActualCostsBulkPayload,
 ) -> AppResult<()> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let wbs_ids: Vec<i64> = payload.costs.iter().map(|c| c.wbs_element_id).collect();
-    check_are_activities_in_draft(&pool, &wbs_ids).await?;
+    check_are_activities_in_draft(pool, &wbs_ids).await?;
 
-    db::upsert_actual_costs_bulk(&pool, &payload.costs).await?;
+    db::upsert_actual_costs_bulk(pool, &payload.costs).await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_actual_costs_for_element(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     wbs_element_id: i64,
 ) -> AppResult<Vec<ActualCost>> {
-    let records = db::get_actual_costs_for_element(&pool, wbs_element_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let records = db::get_actual_costs_for_element(pool, wbs_element_id).await?;
     Ok(records)
 }
 
 #[tauri::command]
 pub async fn add_progress_update(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: AddProgressUpdatePayload,
 ) -> AppResult<ProgressUpdate> {
-    check_is_activity_in_draft(&pool, payload.wbs_element_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     // For now, hardcode user_id as 1.
     let user_id = 1;
     let record = db::add_progress_update(
-        &pool,
+        pool,
         payload.wbs_element_id,
         user_id,
         payload.report_date,
@@ -644,38 +688,46 @@ pub async fn add_progress_update(
 
 #[tauri::command]
 pub async fn get_progress_updates_for_element(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     wbs_element_id: i64,
 ) -> AppResult<Vec<ProgressUpdate>> {
-    let records = db::get_progress_updates_for_element(&pool, wbs_element_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let records = db::get_progress_updates_for_element(pool, wbs_element_id).await?;
     Ok(records)
 }
 
 #[tauri::command]
 pub async fn get_evm_kpis(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: GetEvmKpisPayload,
 ) -> AppResult<evm::EvmKpis> {
-    let kpis = evm::calculate_evm_kpis(&pool, &payload.filter, payload.date).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let kpis = evm::calculate_evm_kpis(pool, &payload.filter, payload.date).await?;
     Ok(kpis)
 }
 
 #[tauri::command]
 pub async fn get_s_curve_data(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: GetSCurveDataPayload,
 ) -> AppResult<Vec<evm::SCurveDataPoint>> {
-    let data = evm::calculate_s_curve_data(&pool, &payload.filter, payload.granularity).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let data = evm::calculate_s_curve_data(pool, &payload.filter, payload.granularity).await?;
     Ok(data)
 }
 
 #[tauri::command]
 pub async fn get_execution_data(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: GetExecutionDataPayload,
 ) -> AppResult<ExecutionDataResult> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let pv_allocations = db::list_allocations_for_period(
-        &pool,
+        pool,
         payload.plan_version_id,
         payload.start_date,
         payload.end_date,
@@ -683,7 +735,7 @@ pub async fn get_execution_data(
     .await?;
 
     let actual_costs =
-        db::list_actuals_for_period(&pool, payload.plan_version_id, payload.start_date, payload.end_date)
+        db::list_actuals_for_period(pool, payload.plan_version_id, payload.start_date, payload.end_date)
             .await?;
 
     Ok(ExecutionDataResult {
@@ -694,9 +746,11 @@ pub async fn get_execution_data(
 
 #[tauri::command]
 pub async fn import_mapped_wbs(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: ImportMappedWbsPayload,
 ) -> AppResult<usize> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let mut tx = pool.begin().await.map_err(db::DbError::from)?;
     let plan_version_id = payload.plan_version_id;
 
@@ -832,20 +886,24 @@ pub struct UpdateUserPayload {
 }
 
 #[tauri::command]
-pub async fn add_user(pool: State<'_, SqlitePool>, payload: UserPayload) -> AppResult<User> {
+pub async fn add_user(state: State<'_, crate::db::AppState>, payload: UserPayload) -> AppResult<User> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let new_user =
-        db::add_user(&pool, &payload.name, &payload.role, payload.email.as_deref(), payload.daily_capacity)
+        db::add_user(pool, &payload.name, &payload.role, payload.email.as_deref(), payload.daily_capacity)
             .await?;
     Ok(new_user)
 }
 
 #[tauri::command]
 pub async fn update_user(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     payload: UpdateUserPayload,
 ) -> AppResult<User> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
     let updated_user = db::update_user(
-        &pool,
+        pool,
         payload.id,
         &payload.name,
         &payload.role,
@@ -857,24 +915,59 @@ pub async fn update_user(
 }
 
 #[tauri::command]
-pub async fn delete_user(pool: State<'_, SqlitePool>, id: i64) -> AppResult<u64> {
-    let rows_affected = db::delete_user(&pool, id).await?;
+pub async fn delete_user(state: State<'_, crate::db::AppState>, id: i64) -> AppResult<u64> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let rows_affected = db::delete_user(pool, id).await?;
     Ok(rows_affected)
 }
 
 #[tauri::command]
-pub async fn list_users(pool: State<'_, SqlitePool>) -> AppResult<Vec<User>> {
-    let users = db::list_users(&*pool).await?;
+pub async fn list_users(state: State<'_, crate::db::AppState>) -> AppResult<Vec<User>> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let users = db::list_users(pool).await?;
     Ok(users)
 }
 
 #[tauri::command]
 pub async fn get_filterable_wbs_nodes(
-    pool: State<'_, SqlitePool>,
+    state: State<'_, crate::db::AppState>,
     plan_version_id: i64,
 ) -> AppResult<Vec<WbsElementDetail>> {
-    let nodes = db::get_filterable_wbs_nodes(&pool, plan_version_id).await?;
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let nodes = db::get_filterable_wbs_nodes(pool, plan_version_id).await?;
     Ok(nodes)
+}
+
+#[tauri::command]
+pub async fn open_database_file(
+    state: State<'_, crate::db::AppState>,
+    app_handle: tauri::AppHandle,
+    path: String,
+) -> AppResult<()> {
+    let new_pool = crate::db::connect_db(&path).await?;
+    
+    // プールとパスを更新
+    let mut pool_guard = state.pool.write().await;
+    let mut path_guard = state.current_db_path.write().await;
+    *pool_guard = Some(new_pool);
+    *path_guard = Some(path.clone());
+
+    // 設定の履歴を更新
+    let mut settings = crate::settings::load_settings(&app_handle);
+    settings.recent_db_paths.retain(|p| p != &path);
+    settings.recent_db_paths.insert(0, path.clone());
+    let _ = crate::settings::save_settings(&app_handle, &settings);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_current_db_path(state: State<'_, crate::db::AppState>) -> Result<Option<String>, String> {
+    let path_guard = state.current_db_path.read().await;
+    Ok(path_guard.clone())
 }
 
 #[tauri::command]
