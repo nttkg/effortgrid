@@ -3,7 +3,6 @@ use crate::db::{
     Portfolio, ProgressUpdate, PvAllocation, SqlitePool, User, WbsElementDetail,
 };
 use crate::evm;
-use crate::settings::{self, AppSettings};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use tauri::State;

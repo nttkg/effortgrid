@@ -2,7 +2,6 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 pub use sqlx::SqlitePool;
 use sqlx::{FromRow, Executor, Sqlite, Transaction};
-use tauri::{AppHandle, Manager};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
