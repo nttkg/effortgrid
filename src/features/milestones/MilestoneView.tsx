@@ -32,7 +32,7 @@ export function MilestoneView({ planVersionId, isReadOnly, portfolioId }: Milest
 
     const form = useForm({
         initialValues: { name: '', targetDate: null as Date | null },
-        validate: zodResolver(milestoneSchema),
+        validate: zodResolver(milestoneSchema as any),
     });
 
     const handleOpenModal = (milestone: PlanMilestone | null) => {
