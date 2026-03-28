@@ -182,7 +182,7 @@ export function ImportWizardModal({
 
         const pvStr = getVal('estimatedPv');
         const estimatedPv = pvStr ? parseFloat(pvStr) : null;
-        if (pvStr && isNaN(estimatedPv)) throw new Error(`Row ${rowIndex+2}: Invalid number for Est. PV`);
+        if (pvStr && isNaN(estimatedPv!)) throw new Error(`Row ${rowIndex+2}: Invalid number for Est. PV`);
         
         const assignee = getVal('assignee');
         
