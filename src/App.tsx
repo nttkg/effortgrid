@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import {
   AppShell,
   Burger,
@@ -12,6 +13,10 @@ import {
   NavLink,
   Title,
   Text,
+  Center,
+  Loader,
+  Container,
+  Menu,
 } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
@@ -41,6 +46,9 @@ function App() {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
   const [planVersions, setPlanVersions] = useState<PlanVersion[]>([]);
   const [selectedPlanVersionId, setSelectedPlanVersionId] = useState<string | null>(null);
+  const [dbPath, setDbPath] = useState<string | null>(null);
+  const [recentPaths, setRecentPaths] = useState<string[]>([]);
+  const [isDbLoading, setIsDbLoading] = useState(true);
 
   const [createModalOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
   const [baselineModalOpened, { open: openBaselineModal, close: closeBaselineModal }] = useDisclosure(false);
@@ -77,8 +85,54 @@ function App() {
   };
 
   useEffect(() => {
-    fetchPortfolios();
+    const initDb = async () => {
+      try {
+        const path = await invoke<string | null>('get_current_db_path');
+        setDbPath(path);
+        const settings = await invoke<any>('get_settings');
+        setRecentPaths(settings.recentDbPaths || []);
+        if (path) {
+          await fetchPortfolios();
+        }
+      } catch (error) {
+        console.error('Failed to init DB state:', error);
+      } finally {
+        setIsDbLoading(false);
+      }
+    };
+    initDb();
   }, []);
+
+  const handleOpenDb = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
+    });
+    if (selected && typeof selected === 'string') {
+      await openDatabasePath(selected);
+    }
+  };
+
+  const handleCreateDb = async () => {
+    const selected = await save({
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }]
+    });
+    if (selected && typeof selected === 'string') {
+      await openDatabasePath(selected);
+    }
+  };
+
+  const openDatabasePath = async (path: string) => {
+    try {
+      await invoke('open_database_file', { path });
+      setDbPath(path);
+      const settings = await invoke<any>('get_settings');
+      setRecentPaths(settings.recentDbPaths || []);
+      await fetchPortfolios();
+    } catch (e: any) {
+      console.error("Failed to open db", e);
+    }
+  };
 
   useEffect(() => {
     if (selectedPortfolioId) {
@@ -141,6 +195,35 @@ function App() {
 
   const selectedPortfolio = portfolios.find(p => p.id === Number(selectedPortfolioId));
 
+  if (isDbLoading) {
+    return <Center h="100vh"><Loader /></Center>;
+  }
+
+  if (!dbPath) {
+    return (
+      <Container size="sm" mt={100}>
+        <Stack align="center" gap="xl">
+          <Title>Welcome to EffortGrid</Title>
+          <Text c="dimmed">A local-first WBS and EVM management tool.</Text>
+          <Group>
+            <Button size="lg" onClick={handleCreateDb}>Create New Database</Button>
+            <Button size="lg" variant="light" onClick={handleOpenDb}>Open Existing Database</Button>
+          </Group>
+          {recentPaths.length > 0 && (
+            <Stack mt="xl" w="100%">
+              <Text fw={500}>Recent Databases</Text>
+              {recentPaths.map(p => (
+                <Button key={p} variant="subtle" justify="flex-start" onClick={() => openDatabasePath(p)}>
+                  {p}
+                </Button>
+              ))}
+            </Stack>
+          )}
+        </Stack>
+      </Container>
+    );
+  }
+
   return (
     <>
       <Notifications />
@@ -186,6 +269,23 @@ function App() {
             <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
             <Burger opened={desktopOpened} onClick={toggleDesktop} visibleFrom="sm" size="sm" />
             <Title order={3}>EffortGrid</Title>
+            <Menu shadow="md" width={300}>
+              <Menu.Target>
+                <Button variant="subtle" color="gray" size="xs" style={{ maxWidth: 200, marginLeft: '1rem' }}>
+                  <Text truncate>{dbPath.split(/[\\/]/).pop()}</Text>
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Database Options</Menu.Label>
+                <Menu.Item onClick={handleOpenDb}>Open Another Database...</Menu.Item>
+                <Menu.Item onClick={handleCreateDb}>Create New Database...</Menu.Item>
+                <Menu.Divider />
+                <Menu.Label>Recent</Menu.Label>
+                {recentPaths.map(p => (
+                  <Menu.Item key={p} onClick={() => openDatabasePath(p)}><Text size="xs" truncate>{p}</Text></Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
             <Group style={{ flex: 1 }} justify="center">
               <Select
                 placeholder="Select a portfolio"
