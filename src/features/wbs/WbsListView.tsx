@@ -20,6 +20,8 @@ import {
   Box,
   TagsInput,
   ScrollArea,
+  Checkbox,
+  Paper,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useForm, zodResolver } from '@mantine/form';
@@ -53,6 +55,8 @@ function WbsElementRow({
   onAddChild,
   onOpenAllocation,
   isReadOnly,
+  isSelected,
+  onToggleSelect,
 }: {
   element: TreeNode;
   level: number;
@@ -60,6 +64,8 @@ function WbsElementRow({
   onAddChild: (parent: WbsElementDetail) => void;
   onOpenAllocation: (element: WbsElementDetail) => void;
   isReadOnly: boolean;
+  isSelected: boolean;
+  onToggleSelect: (id: number) => void;
 }) {
   const [title, setTitle] = useState(element.title);
   const [description, setDescription] = useState(element.description || '');
@@ -134,7 +140,13 @@ function WbsElementRow({
 
   return (
     <>
-      <Table.Tr key={element.id}>
+      <Table.Tr key={element.id} bg={isSelected ? 'var(--mantine-color-blue-light-hover)' : undefined}>
+        <Table.Td>
+          <Checkbox
+            checked={isSelected}
+            onChange={() => onToggleSelect(element.id)}
+          />
+        </Table.Td>
         <Table.Td>
           <div style={{ paddingLeft: level * 24 }}>
             <TextInput
@@ -242,6 +254,8 @@ function WbsElementRow({
           onAddChild={onAddChild}
           onOpenAllocation={onOpenAllocation}
           isReadOnly={isReadOnly}
+          isSelected={isSelected}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </>
@@ -256,6 +270,31 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
   const [activeElement, setActiveElement] = useState<WbsElementDetail | null>(null);
   const [milestones, setMilestones] = useState<PlanMilestone[]>([]);
   const [importWizardOpened, { open: openImportWizard, close: closeImportWizard }] = useDisclosure(false);
+  const [selectedIds, setSelectedIds] = useState(new Set<number>());
+
+  const [bulkType, setBulkType] = useState<WbsElementType | null>(null);
+  const [bulkMilestoneId, setBulkMilestoneId] = useState<string | null>(null);
+  const [bulkPv, setBulkPv] = useState<number | ''>('');
+
+  const handleToggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleToggleAll = () => {
+    if (selectedIds.size === elements.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(elements.map(e => e.id)));
+    }
+  };
 
   const fetchElements = useCallback(async () => {
     if (!planVersionId) return;
@@ -286,6 +325,7 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
     } else {
       setElements([]);
       setMilestones([]);
+      setSelectedIds(new Set());
     }
   }, [planVersionId, fetchElements, fetchMilestones]);
 
@@ -357,6 +397,71 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
     } catch (error) {
       console.error('Failed to add WBS element:', error);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!planVersionId || selectedIds.size === 0) return;
+    try {
+        await invoke('delete_wbs_elements_bulk', {
+            payload: {
+                planVersionId,
+                detailIds: Array.from(selectedIds),
+            },
+        });
+        notifications.show({ title: 'Success', message: 'WBS elements deleted.', color: 'green' });
+        fetchElements();
+        setSelectedIds(new Set());
+    } catch (error) {
+        notifications.show({ title: 'Error', message: 'Failed to delete WBS elements.', color: 'red' });
+        console.error(error);
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+      if (!planVersionId || selectedIds.size === 0) return;
+
+      const payload: {
+          planVersionId: number;
+          detailIds: number[];
+          elementType?: WbsElementType;
+          milestoneId?: number | null;
+          estimatedPv?: number | null;
+      } = {
+          planVersionId,
+          detailIds: Array.from(selectedIds),
+      };
+
+      let hasUpdate = false;
+      if (bulkType) {
+          payload.elementType = bulkType;
+          hasUpdate = true;
+      }
+      if (bulkMilestoneId !== null) { // This means it has been touched
+          payload.milestoneId = bulkMilestoneId === 'NULL' ? null : Number(bulkMilestoneId);
+          hasUpdate = true;
+      }
+      if (bulkPv !== '') {
+          payload.estimatedPv = bulkPv === null ? null : Number(bulkPv);
+          hasUpdate = true;
+      }
+
+      if (!hasUpdate) {
+          notifications.show({ title: 'No Changes', message: 'Select a value to apply.', color: 'yellow' });
+          return;
+      }
+
+      try {
+          await invoke('update_wbs_elements_bulk', { payload });
+          notifications.show({ title: 'Success', message: 'WBS elements updated.', color: 'green' });
+          fetchElements(); // refetch to get updated data
+          setSelectedIds(new Set());
+          setBulkType(null);
+          setBulkMilestoneId(null);
+          setBulkPv('');
+      } catch (error: any) {
+          notifications.show({ title: 'Error', message: `Failed to update: ${error}`, color: 'red' });
+          console.error(error);
+      }
   };
 
   const handleCopyTsv = async () => {
@@ -500,10 +605,58 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
         </Group>
       </Group>
 
+      {selectedIds.size > 0 && !isReadOnly && (
+        <Paper withBorder p="xs" radius="md" shadow="xs" style={{ backgroundColor: 'var(--mantine-color-dark-6)' }}>
+          <Group>
+            <Text size="sm" fw={500}>{selectedIds.size} items selected</Text>
+            <Select
+              data={['Project', 'WorkPackage', 'Activity']}
+              value={bulkType}
+              onChange={val => setBulkType(val as WbsElementType)}
+              placeholder="Change Type"
+              clearable
+              size="xs"
+            />
+            <Select
+              data={[
+                { value: 'NULL', label: 'None' },
+                ...milestones.map(m => ({ value: String(m.milestoneId), label: m.name }))
+              ]}
+              value={bulkMilestoneId}
+              onChange={setBulkMilestoneId}
+              placeholder="Change Milestone"
+              clearable
+              searchable
+              size="xs"
+            />
+            <NumberInput
+              value={bulkPv}
+              onChange={setBulkPv}
+              placeholder="Set Est. PV"
+              hideControls
+              min={0}
+              clearable
+              size="xs"
+            />
+            <Button size="xs" onClick={handleBulkUpdate}>Apply Updates</Button>
+            <Button size="xs" variant="default" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+            <Button size="xs" color="red" onClick={handleBulkDelete}>Delete Selected</Button>
+          </Group>
+        </Paper>
+      )}
+
       <ScrollArea h="calc(100vh - 150px)" offsetScrollbars>
         <Table stickyHeader>
           <Table.Thead>
           <Table.Tr>
+            <Table.Th style={{ width: 40 }}>
+              <Checkbox
+                checked={elements.length > 0 && selectedIds.size === elements.length}
+                indeterminate={selectedIds.size > 0 && selectedIds.size < elements.length}
+                onChange={handleToggleAll}
+                disabled={isReadOnly}
+              />
+            </Table.Th>
             <Table.Th>WBS Title</Table.Th>
             <Table.Th>Type</Table.Th>
             <Table.Th>Milestone</Table.Th>
@@ -523,6 +676,8 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
               onAddChild={handleOpenAddModal}
               onOpenAllocation={handleOpenAllocModal}
               isReadOnly={isReadOnly}
+              isSelected={selectedIds.has(node.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))}
         </Table.Tbody>
