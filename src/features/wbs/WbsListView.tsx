@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import classes from './WbsListView.module.css';
 import {
   Table,
   Badge,
@@ -141,6 +142,7 @@ function WbsElementRow({
               onChange={(e) => handleDetailChange('title', e.currentTarget.value)}
               variant="unstyled"
               readOnly={isReadOnly}
+              classNames={{ input: classes.editable_input }}
             />
           </div>
         </Table.Td>
@@ -151,6 +153,7 @@ function WbsElementRow({
             onChange={(val) => val && handleDetailChange('elementType', val as WbsElementType)}
             variant="unstyled"
             readOnly={isReadOnly}
+            classNames={{ input: classes.editable_input }}
           />
         </Table.Td>
         <Table.Td>
@@ -165,6 +168,7 @@ function WbsElementRow({
             readOnly={isReadOnly}
             searchable
             clearable
+            classNames={{ input: classes.editable_input }}
           />
         </Table.Td>
         <Table.Td>
@@ -178,6 +182,7 @@ function WbsElementRow({
               style={{ width: 100 }}
               readOnly={isReadOnly}
               variant="unstyled"
+              classNames={{ input: classes.editable_input }}
             />
           ) : (
             <Text c="dimmed" size="sm" style={{ paddingLeft: 'var(--mantine-spacing-sm)'}}>-</Text>
@@ -190,6 +195,7 @@ function WbsElementRow({
             variant="unstyled"
             placeholder="Add note..."
             readOnly={isReadOnly}
+            classNames={{ input: classes.editable_input }}
           />
         </Table.Td>
         <Table.Td>
@@ -200,6 +206,7 @@ function WbsElementRow({
             placeholder="Add tags..."
             clearable
             readOnly={isReadOnly}
+            classNames={{ input: classes.editable_input }}
           />
         </Table.Td>
         <Table.Td>
@@ -491,7 +498,7 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
         </Group>
       </Group>
 
-      <ScrollArea style={{ flex: 1, height: 'calc(100vh - 160px)' }}>
+      <ScrollArea h="calc(100vh - 150px)" offsetScrollbars>
         <Table stickyHeader>
           <Table.Thead>
           <Table.Tr>
