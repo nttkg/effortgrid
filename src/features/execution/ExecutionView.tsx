@@ -72,22 +72,19 @@ const ProgressInputCell = React.memo(({ wbsElementId, date, initialValue, onComm
   };
   
   return (
-    <NumberInput
-      classNames={{ input: classes.ac_input }}
-      style={{ height: '100%' }}
-      styles={{
-        wrapper: { height: '100%' },
-        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)' }
-      }}
-      value={value}
-      onChange={setValue}
-      onBlur={handleBlur}
-      step={1} min={0} max={100} hideControls
-      readOnly={isReadOnly}
-      variant="unstyled"
-      rightSection={<Text size="xs" c="dimmed">%</Text>}
-      rightSectionWidth={20}
-    />
+    <div style={{ position: 'relative', height: '100%' }}>
+      <input
+        type="number"
+        className={classes.ac_input_native}
+        style={{ paddingRight: '16px', cursor: 'cell' }}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        step="1" min="0" max="100"
+        readOnly={isReadOnly}
+      />
+      <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--mantine-color-dimmed)', pointerEvents: 'none' }}>%</span>
+    </div>
   );
 });
 const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
@@ -109,27 +106,24 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
   };
 
   return (
-    <NumberInput
+    <input
       id={`cell-pv-${wbsElementId}-${userId}-${date}`}
-      classNames={{ input: classes.ac_input }}
+      type="number"
+      className={classes.ac_input_native}
       style={{
         backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
-        height: '100%',
-      }}
-      styles={{
-        wrapper: { height: '100%' },
-        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)', color: 'var(--mantine-color-dimmed)' }
+        cursor: 'cell',
+        color: 'var(--mantine-color-dimmed)'
       }}
       value={value}
-      onChange={setValue}
+      onChange={(e) => setValue(e.target.value)}
       onBlur={handleBlur}
-      onKeyDown={(e) => onKeyDown(e, wbsElementId, userId, date, 'pv')}
-      onPaste={(e) => onPaste(e, wbsElementId, userId, date, 'pv')}
-      onMouseDown={(e) => onMouseDown(e, wbsElementId, userId, date, 'pv')}
+      onKeyDown={(e) => onKeyDown(e as any, wbsElementId, userId, date, 'pv')}
+      onPaste={(e) => onPaste(e as any, wbsElementId, userId, date, 'pv')}
+      onMouseDown={(e) => onMouseDown(e as any, wbsElementId, userId, date, 'pv')}
       onMouseOver={() => onMouseOver(wbsElementId, userId, date, 'pv')}
-      step={0.1} min={0} hideControls
+      step="0.1" min="0"
       readOnly={isReadOnly}
-      variant="unstyled"
     />
   );
 });
@@ -153,27 +147,23 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
   };
 
   return (
-    <NumberInput
+    <input
       id={`cell-ac-${wbsElementId}-${userId}-${date}`}
-      classNames={{ input: classes.ac_input }}
+      type="number"
+      className={classes.ac_input_native}
       style={{
         backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
-        height: '100%',
-      }}
-      styles={{
-        wrapper: { height: '100%' },
-        input: { height: '100%', cursor: 'cell', textAlign: 'right', paddingRight: 'var(--mantine-spacing-xs)' }
+        cursor: 'cell'
       }}
       value={value}
-      onChange={setValue}
+      onChange={(e) => setValue(e.target.value)}
       onBlur={handleBlur}
-      onKeyDown={(e) => onKeyDown(e, wbsElementId, userId, date, 'ac')}
-      onPaste={(e) => onPaste(e, wbsElementId, userId, date, 'ac')}
-      onMouseDown={(e) => onMouseDown(e, wbsElementId, userId, date, 'ac')}
+      onKeyDown={(e) => onKeyDown(e as any, wbsElementId, userId, date, 'ac')}
+      onPaste={(e) => onPaste(e as any, wbsElementId, userId, date, 'ac')}
+      onMouseDown={(e) => onMouseDown(e as any, wbsElementId, userId, date, 'ac')}
       onMouseOver={() => onMouseOver(wbsElementId, userId, date, 'ac')}
-      step={0.1} min={0} hideControls
+      step="0.1" min="0"
       readOnly={isReadOnly}
-      variant="unstyled"
     />
   );
 });
@@ -574,7 +564,7 @@ const GridRow = React.memo(({
                     {col.type === 'day' ? (
                       <PvInputCell
                         wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
-                        initialPv={value}
+                        initialPv={value || undefined}
                         onCommit={onPvChange}
                         isReadOnly={isReadOnly}
                         onKeyDown={onCellKeyDown} onPaste={onCellPaste}
@@ -623,7 +613,7 @@ const GridRow = React.memo(({
                     {col.type === 'day' ? (
                       <AcInputCell
                         wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
-                        initialAc={value}
+                        initialAc={value || undefined}
                         onCommit={onAcChange}
                         isReadOnly={isReadOnly || isUnassigned}
                         onKeyDown={onCellKeyDown} onPaste={onCellPaste}
