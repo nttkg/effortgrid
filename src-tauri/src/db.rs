@@ -337,6 +337,107 @@ pub async fn update_wbs_element_details(
     Ok(rows_affected)
 }
 
+pub async fn delete_wbs_elements_bulk(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+    detail_ids: &[i64],
+) -> DbResult<u64> {
+    let ids_json = serde_json::to_string(detail_ids).unwrap();
+
+    let rows_affected = sqlx::query(r#"
+        WITH RECURSIVE elements_to_delete(wbs_id) AS (
+            SELECT wbs_element_id FROM wbs_element_details WHERE id IN (SELECT value FROM json_each(?)) AND plan_version_id = ?
+            UNION
+            SELECT d.wbs_element_id FROM wbs_element_details d JOIN elements_to_delete ON d.parent_element_id = elements_to_delete.wbs_id WHERE d.plan_version_id = ?
+        )
+        UPDATE wbs_element_details SET is_deleted = 1
+        WHERE plan_version_id = ? AND wbs_element_id IN (SELECT wbs_id FROM elements_to_delete)
+    "#)
+    .bind(ids_json)
+    .bind(plan_version_id)
+    .bind(plan_version_id)
+    .bind(plan_version_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+
+    Ok(rows_affected)
+}
+
+pub async fn update_wbs_elements_bulk(
+    pool: &SqlitePool,
+    plan_version_id: i64,
+    detail_ids: &[i64],
+    element_type: Option<WbsElementType>,
+    milestone_id: Option<Option<i64>>, // Option<Option<i64>> to distinguish "set to NULL" from "do not change"
+    estimated_pv: Option<Option<f64>>,
+) -> DbResult<u64> {
+    let mut tx = pool.begin().await?;
+    let ids_json = serde_json::to_string(detail_ids).unwrap();
+    let mut total_rows_affected = 0;
+
+    if let Some(milestone_id_val) = milestone_id {
+        total_rows_affected += sqlx::query(
+            "UPDATE wbs_element_details SET milestone_id = ? WHERE plan_version_id = ? AND id IN (SELECT value FROM json_each(?))"
+        )
+        .bind(milestone_id_val)
+        .bind(plan_version_id)
+        .bind(&ids_json)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+
+    if let Some(pv_val) = estimated_pv {
+        total_rows_affected += sqlx::query(
+            "UPDATE wbs_element_details SET estimated_pv = ? WHERE plan_version_id = ? AND element_type = 'Activity' AND id IN (SELECT value FROM json_each(?))"
+        )
+        .bind(pv_val)
+        .bind(plan_version_id)
+        .bind(&ids_json)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    
+    if let Some(et_val) = element_type {
+        if et_val == WbsElementType::Activity {
+            // Safety check: only update if it has no active children
+            total_rows_affected += sqlx::query(
+                r#"
+                UPDATE wbs_element_details SET element_type = ?
+                WHERE plan_version_id = ? AND id IN (SELECT value FROM json_each(?))
+                AND NOT EXISTS (
+                    SELECT 1 FROM wbs_element_details AS children
+                    WHERE children.parent_element_id = wbs_element_details.wbs_element_id
+                    AND children.plan_version_id = ? AND children.is_deleted = false
+                )
+                "#
+            )
+            .bind(&et_val)
+            .bind(plan_version_id)
+            .bind(&ids_json)
+            .bind(plan_version_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        } else {
+            total_rows_affected += sqlx::query(
+                "UPDATE wbs_element_details SET element_type = ? WHERE plan_version_id = ? AND id IN (SELECT value FROM json_each(?))"
+            )
+            .bind(&et_val)
+            .bind(plan_version_id)
+            .bind(&ids_json)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        }
+    }
+
+    tx.commit().await?;
+    Ok(total_rows_affected)
+}
+
 pub async fn list_all_allocations_for_plan_version(
     pool: &SqlitePool,
     plan_version_id: i64,

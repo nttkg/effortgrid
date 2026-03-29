@@ -65,6 +65,23 @@ pub struct UpdateWbsElementDetailsPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DeleteWbsElementsBulkPayload {
+    plan_version_id: i64,
+    detail_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateWbsElementsBulkPayload {
+    plan_version_id: i64,
+    detail_ids: Vec<i64>,
+    element_type: Option<db::WbsElementType>,
+    milestone_id: Option<Option<i64>>,
+    estimated_pv: Option<Option<f64>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPvAllocationsPayload {
     wbs_element_id: i64,
     plan_version_id: i64,
@@ -323,6 +340,36 @@ pub async fn update_wbs_element_details(
     )
     .await?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_wbs_elements_bulk(
+    state: State<'_, crate::db::AppState>,
+    payload: DeleteWbsElementsBulkPayload,
+) -> AppResult<u64> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let rows_affected = db::delete_wbs_elements_bulk(pool, payload.plan_version_id, &payload.detail_ids).await?;
+    Ok(rows_affected)
+}
+
+#[tauri::command]
+pub async fn update_wbs_elements_bulk(
+    state: State<'_, crate::db::AppState>,
+    payload: UpdateWbsElementsBulkPayload,
+) -> AppResult<u64> {
+    let pool_guard = state.pool.read().await;
+    let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
+    let rows_affected = db::update_wbs_elements_bulk(
+        pool,
+        payload.plan_version_id,
+        &payload.detail_ids,
+        payload.element_type,
+        payload.milestone_id,
+        payload.estimated_pv,
+    )
+    .await?;
+    Ok(rows_affected)
 }
 
 #[tauri::command]

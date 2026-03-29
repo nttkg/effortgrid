@@ -47,6 +47,8 @@ pub fn run() {
             commands::list_plan_versions_for_portfolio,
             commands::update_wbs_element_pv,
             commands::update_wbs_element_details,
+            commands::delete_wbs_elements_bulk,
+            commands::update_wbs_elements_bulk,
             commands::list_plan_milestones,
             commands::add_plan_milestone,
             commands::update_plan_milestone,
