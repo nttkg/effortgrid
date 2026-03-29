@@ -87,14 +87,13 @@ const ProgressInputCell = React.memo(({ wbsElementId, date, initialValue, onComm
     </div>
   );
 });
-const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
+const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver }: {
   wbsElementId: number; userId: number; date: string; initialPv?: number; isReadOnly: boolean;
   onCommit: (wbsId: number, uId: number, d: string, val: number | null) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onMouseOver: (wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
-  isSelected: boolean;
 }) => {
   const [value, setValue] = useState<string | number>(initialPv ?? '');
   useEffect(() => { setValue(initialPv ?? ''); }, [initialPv]);
@@ -111,7 +110,7 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
       type="number"
       className={classes.ac_input_native}
       style={{
-        backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
+        backgroundColor: 'transparent',
         cursor: 'cell',
         color: 'var(--mantine-color-dimmed)'
       }}
@@ -128,14 +127,13 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
   );
 });
 
-const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver, isSelected }: {
+const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommit, isReadOnly, onKeyDown, onPaste, onMouseDown, onMouseOver }: {
   wbsElementId: number; userId: number; date: string; initialAc?: number; isReadOnly: boolean;
   onCommit: (wbsId: number, uId: number, d: string, val: number | null) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onMouseOver: (wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
-  isSelected: boolean;
 }) => {
   const [value, setValue] = useState<string | number>(initialAc ?? '');
   useEffect(() => { setValue(initialAc ?? ''); }, [initialAc]);
@@ -152,7 +150,7 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
       type="number"
       className={classes.ac_input_native}
       style={{
-        backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
+        backgroundColor: 'transparent',
         cursor: 'cell'
       }}
       value={value}
@@ -580,7 +578,6 @@ const GridRow = React.memo(({
                         onKeyDown={onCellKeyDown} onPaste={onCellPaste}
                         onMouseDown={onCellMouseDown}
                         onMouseOver={onCellMouseOver}
-                        isSelected={selectedCells.has(cellId)}
                       />
                     ) : (
                       <div style={{ padding: '0 var(--mantine-spacing-xs)', minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', color: 'var(--mantine-color-dimmed)'}}>
@@ -629,7 +626,6 @@ const GridRow = React.memo(({
                         onKeyDown={onCellKeyDown} onPaste={onCellPaste}
                         onMouseDown={onCellMouseDown}
                         onMouseOver={onCellMouseOver}
-                        isSelected={selectedCells.has(cellId)}
                       />
                     ) : (
                       <div style={{padding: '0 var(--mantine-spacing-xs)', minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end'}}>
@@ -663,9 +659,26 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const [assignedUsers, setAssignedUsers] = useState<{ [wbsId: number]: Set<number> }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const selectedCellsRef = useRef<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
+
+  const updateSelection = useEvent((newSelection: Set<string>) => {
+      const current = selectedCellsRef.current;
+      current.forEach(id => {
+          if (!newSelection.has(id)) {
+              const el = document.getElementById(id);
+              if (el) el.style.backgroundColor = 'transparent';
+          }
+      });
+      newSelection.forEach(id => {
+          if (!current.has(id)) {
+              const el = document.getElementById(id);
+              if (el) el.style.backgroundColor = 'var(--mantine-color-blue-light)';
+          }
+      });
+      selectedCellsRef.current = newSelection;
+  });
 
   const daysInMonth = useMemo(() => {
     const start = dayjs(currentMonth).startOf('month');
@@ -963,7 +976,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         const endCol = columnKeys.indexOf(date);
 
         if (startRow === -1 || startCol === -1 || endRow === -1 || endCol === -1) {
-            setSelectedCells(new Set([cellId]));
+            updateSelection(new Set([cellId]));
             return;
         }
         
@@ -980,10 +993,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                 newSelectedCells.add(`cell-${type}-${rowInfo.wbsId}-${rowInfo.userId}-${columnKeys[c]}`);
             }
         }
-        setSelectedCells(newSelectedCells);
+        updateSelection(newSelectedCells);
     } else {
         setSelectionAnchor(cellId);
-        setSelectedCells(new Set([cellId]));
+        updateSelection(new Set([cellId]));
     }
   });
 
@@ -1018,8 +1031,14 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
             newSelectedCells.add(`cell-${metricType}-${rowInfo.wbsId}-${rowInfo.userId}-${columnKeys[c]}`);
         }
     }
-    setSelectedCells(newSelectedCells);
+    updateSelection(newSelectedCells);
   });
+
+  const focusCellAndSelect = (wbsId: number, uId: number, d: string, type: 'pv' | 'ac') => {
+      const targetId = `cell-${type}-${wbsId}-${uId}-${d}`;
+      document.getElementById(targetId)?.focus();
+      updateSelection(new Set([targetId]));
+  };
 
   const handleCellKeyDown = useEvent((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
     const { key } = e;
@@ -1032,16 +1051,16 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
     if (key === 'ArrowUp' && rowIndex > 0) {
       const { wbsId, userId: newUserId } = activityRowIds[rowIndex - 1];
-      focusCell(wbsId, newUserId, date, metricType);
+      focusCellAndSelect(wbsId, newUserId, date, metricType);
     } else if (key === 'ArrowDown' && rowIndex < activityRowIds.length - 1) {
       const { wbsId, userId: newUserId } = activityRowIds[rowIndex + 1];
-      focusCell(wbsId, newUserId, date, metricType);
+      focusCellAndSelect(wbsId, newUserId, date, metricType);
     } else if (key === 'ArrowLeft' && colIndex > 0) {
-      focusCell(wbsElementId, userId, columnKeys[colIndex - 1], metricType);
+      focusCellAndSelect(wbsElementId, userId, columnKeys[colIndex - 1], metricType);
     } else if (key === 'ArrowRight' && colIndex < columnKeys.length - 1) {
-      focusCell(wbsElementId, userId, columnKeys[colIndex + 1], metricType);
+      focusCellAndSelect(wbsElementId, userId, columnKeys[colIndex + 1], metricType);
     } else if (key === 'Delete' || key === 'Backspace') {
-        const cellsToUpdate = selectedCells.size > 1 ? selectedCells : new Set([`cell-${metricType}-${wbsElementId}-${userId}-${date}`]);
+        const cellsToUpdate = selectedCellsRef.current.size > 1 ? selectedCellsRef.current : new Set([`cell-${metricType}-${wbsElementId}-${userId}-${date}`]);
         
         if (metricType === 'ac') {
             const costs = Array.from(cellsToUpdate).map(cellId => {
@@ -1096,10 +1115,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
     if (metricType === 'ac') {
       let costs: { wbsElementId: number, userId: number, workDate: string, actualCost: number | null }[] = [];
-      if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
+      if (selectedCellsRef.current.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
           const valueStr = pasteData.trim();
           const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
-          costs = Array.from(selectedCells).map(cellId => {
+          costs = Array.from(selectedCellsRef.current).map(cellId => {
               const parts = cellId.split('-');
               return { wbsElementId: Number(parts[2]), userId: Number(parts[3]), workDate: parts.slice(4).join('-'), actualCost: value };
           });
@@ -1140,10 +1159,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       catch (err) { console.error("Bulk AC paste failed:", err); fetchAllData(); }
     } else { // 'pv'
       let allocations: { wbsElementId: number, userId: number | null, date: string, plannedValue: number | null }[] = [];
-      if (selectedCells.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
+      if (selectedCellsRef.current.size > 1 && !pasteData.includes('\t') && !pasteData.includes('\n') && !pasteData.includes('\r')) {
           const valueStr = pasteData.trim();
           const value = !isNaN(parseFloat(valueStr)) ? parseFloat(valueStr) : null;
-          allocations = Array.from(selectedCells).map(cellId => {
+          allocations = Array.from(selectedCellsRef.current).map(cellId => {
               const parts = cellId.split('-');
               const uId = Number(parts[3]);
               return { wbsElementId: Number(parts[2]), userId: uId === 0 ? null : uId, date: parts.slice(4).join('-'), plannedValue: value };
@@ -1280,7 +1299,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
-      if (selectedCells.size === 0 || !e.clipboardData || viewMode === 'weekly') return;
+      if (selectedCellsRef.current.size === 0 || !e.clipboardData || viewMode === 'weekly') return;
       const activeEl = document.activeElement;
       if (!activeEl || !activeEl.id.startsWith('cell-')) return;
       
@@ -1292,7 +1311,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
       let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
       
-      const cellCoords = Array.from(selectedCells).map(cellId => {
+      const cellCoords = Array.from(selectedCellsRef.current).map(cellId => {
         const parts = cellId.split('-'); // cell-ac-wbs-user-date
         const wbsId = Number(parts[2]);
         const userId = Number(parts[3]);
@@ -1311,7 +1330,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       const grid: (number | string)[][] = Array(maxRow - minRow + 1).fill(0).map(() => Array(maxCol - minCol + 1).fill(''));
       
       cellCoords.forEach(({ r, c, wbsId, userId, date }) => {
-        if (selectedCells.has(`cell-${metricType}-${wbsId}-${userId}-${date}`)) {
+        if (selectedCellsRef.current.has(`cell-${metricType}-${wbsId}-${userId}-${date}`)) {
           let value;
           if (metricType === 'ac') {
             value = executionData[wbsId]?.[userId]?.[date]?.ac?.value;
@@ -1328,7 +1347,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
     document.addEventListener('copy', handleCopy);
     return () => document.removeEventListener('copy', handleCopy);
-  }, [selectedCells, executionData, activityRowIds, columnKeys, viewMode]);
+  }, [executionData, activityRowIds, columnKeys, viewMode]);
 
   const changeMonth = (amount: number) => setCurrentMonth(dayjs(currentMonth).add(amount, 'month').toDate());
 
@@ -1415,7 +1434,6 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                     onCellPaste={handleCellPaste} 
                     onCellMouseDown={handleCellMouseDown} 
                     onCellMouseOver={handleCellMouseOver} 
-                    selectedCells={selectedCells} 
                 />
               )}
             </Table.Tbody>
