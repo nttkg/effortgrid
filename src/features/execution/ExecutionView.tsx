@@ -256,21 +256,6 @@ const gridRowAreEqual = (prevProps: any, nextProps: any) => {
   if (prevProps.allPlanActuals !== nextProps.allPlanActuals) return false;
   if (prevProps.isReadOnly !== nextProps.isReadOnly) return false;
 
-  if (prevProps.selectedCells !== nextProps.selectedCells) {
-    const wbsId = prevProps.node.wbsElementId;
-    const checkHas = (cells: Set<string>) => {
-      for (const cell of cells) {
-        const parts = cell.split('-');
-        if (parts.length > 2 && Number(parts[2]) === wbsId) {
-          return true;
-        }
-      }
-      return false;
-    };
-    if (checkHas(prevProps.selectedCells) || checkHas(nextProps.selectedCells)) {
-      return false;
-    }
-  }
   return true;
 };
 
