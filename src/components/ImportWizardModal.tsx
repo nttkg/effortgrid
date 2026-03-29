@@ -228,7 +228,7 @@ export function ImportWizardModal({
     const headerDate = dayjs(headers[columnIndex], DATE_FORMATS, true);
     newMaps[columnIndex] = { 
         type: newType, 
-        date: (newType === 'dailyPv' || newType === 'dailyAc') && headerDate.isValid() ? headerDate.format('YYYY-MM-DD') : undefined
+        date: (newType === 'dailyPv' || newType === 'dailyAc' || newType === 'dailyProgress') && headerDate.isValid() ? headerDate.format('YYYY-MM-DD') : undefined
     };
     setColumnMaps(newMaps);
   };
