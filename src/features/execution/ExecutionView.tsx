@@ -262,7 +262,7 @@ const gridRowAreEqual = (prevProps: any, nextProps: any) => {
 const GridRow = React.memo(({ 
     node, level, columns, data, progressData, allElements, allPlanAllocations, allPlanActuals, users, assignedUsersMap,
     onPvChange, onAcChange, onProgressChange, isReadOnly, onAddUser,
-    onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver, selectedCells 
+    onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver 
 }: {
   node: TreeNode; level: number; columns: Column[]; data: ExecutionMap; progressData: { [wbsId: number]: { [date: string]: { id: number; value: number } } }; allElements: WbsElementDetail[]; allPlanAllocations: PvAllocation[]; allPlanActuals: ActualCost[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
@@ -275,7 +275,6 @@ const GridRow = React.memo(({
   onCellPaste: (e: React.ClipboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onCellMouseDown: (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
   onCellMouseOver: (wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => void;
-  selectedCells: Set<string>;
 }) => {
   const isActivity = node.elementType === 'Activity';
   const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
