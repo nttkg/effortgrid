@@ -205,7 +205,12 @@ export function ImportWizardModal({
 
                 if (map.type === 'dailyPv' && map.date) dailyPvs[map.date] = val;
                 if (map.type === 'dailyAc' && map.date) dailyAcs[map.date] = val;
-                if (map.type === 'dailyProgress' && map.date) dailyProgresses[map.date] = val;
+                if (map.type === 'dailyProgress' && map.date) {
+                    if (val === 0) {
+                        throw new Error(`Row ${rowIndex+2}, Col ${colIndex+1}: Progress cannot be 0%. Empty Excel cells might be copied as 0. To reset progress to 0%, please do it manually from the UI.`);
+                    }
+                    dailyProgresses[map.date] = val;
+                }
             }
         });
 
