@@ -166,8 +166,8 @@ export function DashboardWidget({ config, planVersionId, onUpdate, onRemove }: W
             <YAxis />
             <Tooltip />
             <Legend />
-            <Area type="monotone" dataKey="actualEtc" stackId="a" stroke="#4c6a85" fill="#4c6a85" name="ETC (Actual)" />
-            <Area type="monotone" dataKey="cumulativeEv" stackId="a" stroke="#82ca9d" fill="#82ca9d" name="EV" />
+            <Area type="monotone" dataKey="actualEtc" stackId="a" stroke="#4c6a85" fill="#4c6a85" name="ETC (Actual)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
+            <Area type="monotone" dataKey="cumulativeEv" stackId="a" stroke="#82ca9d" fill="#82ca9d" name="EV" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
             <Line type="monotone" dataKey="plannedEtc" stroke="#ff7300" strokeWidth={2} name="ETC (Planned)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }}/>
             <Brush dataKey="date" height={30} stroke="#8884d8" />
         </ComposedChart>
