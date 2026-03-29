@@ -632,9 +632,21 @@ const GridRow = React.memo(({
 export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
   const { users } = useUsers();
   const [importWizardOpened, { open: openImportWizard, close: closeImportWizard }] = useDisclosure(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('daily');
-  const [zoomLevel, setZoomLevel] = useState(1.0);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    return (sessionStorage.getItem('execution_view_mode') as ViewMode) || 'daily';
+  });
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const saved = sessionStorage.getItem('execution_zoom_level');
+    return saved ? parseFloat(saved) : 1.0;
+  });
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const saved = sessionStorage.getItem('execution_current_month');
+    return saved ? new Date(saved) : new Date();
+  });
+
+  useEffect(() => { sessionStorage.setItem('execution_view_mode', viewMode); }, [viewMode]);
+  useEffect(() => { sessionStorage.setItem('execution_zoom_level', zoomLevel.toString()); }, [zoomLevel]);
+  useEffect(() => { sessionStorage.setItem('execution_current_month', currentMonth.toISOString()); }, [currentMonth]);
   const [elements, setElements] = useState<WbsElementDetail[]>([]);
   const [executionData, setExecutionData] = useState<ExecutionMap>({});
   const [progressData, setProgressData] = useState<{ [wbsId: number]: { [date: string]: { id: number; value: number } } }>({});
