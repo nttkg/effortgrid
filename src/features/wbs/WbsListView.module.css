@@ -1,0 +1,18 @@
+.editable_input {
+    border: 1px solid transparent !important;
+    border-radius: 4px;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+.editable_input:hover:not([readonly]):not([data-disabled="true"]):not([disabled]) {
+    border-color: var(--mantine-color-blue-outline) !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.editable_input:focus,
+.editable_input:focus-within {
+    border-color: var(--mantine-color-blue-filled) !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
