@@ -168,7 +168,7 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
   );
 });
 
-const ResourceCapacityFooter = ({ users, elements, data, columns }: {
+const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
     users: User[];
     elements: WbsElementDetail[];
     data: ExecutionMap;
@@ -228,7 +228,7 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
 
                         {columns.map(col => {
                             const total = col.type === 'day'
-                                ? dailyTotals[userId]?.[col.date.format('YYYY-MM-DD')] || 0
+                                ? dailyTotals[userId]?.[col.key] || 0
                                 : col.dates.reduce((sum, day) => sum + (dailyTotals[userId]?.[day.format('YYYY-MM-DD')] || 0), 0);
                             
                             const capacity = user.dailyCapacity ?? 8.0;
@@ -247,7 +247,7 @@ const ResourceCapacityFooter = ({ users, elements, data, columns }: {
             })}
         </Table.Tfoot>
     );
-};
+});
 
 const gridRowAreEqual = (prevProps: any, nextProps: any) => {
   if (prevProps.data !== nextProps.data) return false;
@@ -262,7 +262,10 @@ const gridRowAreEqual = (prevProps: any, nextProps: any) => {
     const wbsId = prevProps.node.wbsElementId;
     const checkHas = (cells: Set<string>) => {
       for (const cell of cells) {
-        if (cell.includes(`-${wbsId}-`)) return true;
+        const parts = cell.split('-');
+        if (parts.length > 2 && Number(parts[2]) === wbsId) {
+          return true;
+        }
       }
       return false;
     };
@@ -327,14 +330,21 @@ const GridRow = React.memo(({
       const activityData = data[activity.wbsElementId];
       if (!activityData) return sum;
       return sum + Object.values(activityData).reduce((userSum, userEntries) => {
-        const dates = column.type === 'day' ? [column.date] : column.dates;
-        return userSum + dates.reduce((dateSum, date) => {
-            const cellData = userEntries[date.format('YYYY-MM-DD')];
-            if (!cellData) return dateSum;
-            if (type === 'pv') return dateSum + (cellData.pv || 0);
-            if (type === 'ac') return dateSum + (cellData.ac?.value || 0);
-            return dateSum;
-        }, 0);
+        if (column.type === 'day') {
+            const cellData = userEntries[column.key];
+            if (!cellData) return userSum;
+            if (type === 'pv') return userSum + (cellData.pv || 0);
+            if (type === 'ac') return userSum + (cellData.ac?.value || 0);
+            return userSum;
+        } else {
+            return userSum + column.dates.reduce((dateSum, date) => {
+                const cellData = userEntries[date.format('YYYY-MM-DD')];
+                if (!cellData) return dateSum;
+                if (type === 'pv') return dateSum + (cellData.pv || 0);
+                if (type === 'ac') return dateSum + (cellData.ac?.value || 0);
+                return dateSum;
+            }, 0);
+        }
       }, 0);
     }, 0);
   };
@@ -557,7 +567,7 @@ const GridRow = React.memo(({
                 const cellId = `cell-pv-${node.wbsElementId}-${userId}-${dateStr}`;
 
                 const value = col.type === 'day'
-                    ? data[node.wbsElementId]?.[userId]?.[col.date.format('YYYY-MM-DD')]?.pv || 0
+                    ? data[node.wbsElementId]?.[userId]?.[col.key]?.pv || 0
                     : col.dates.reduce((sum, d) => sum + (data[node.wbsElementId]?.[userId]?.[d.format('YYYY-MM-DD')]?.pv || 0), 0);
                 return (
                   <Table.Td key={`${col.key}-pv`} className={`${classes.data_cell} ${ganttClassesPv.join(' ')}`} style={{ padding: 0, verticalAlign: 'middle', borderBottom: 'none' }}>
@@ -605,7 +615,7 @@ const GridRow = React.memo(({
                 }
 
                 const value = col.type === 'day'
-                    ? data[node.wbsElementId]?.[userId]?.[col.date.format('YYYY-MM-DD')]?.ac?.value || 0
+                    ? data[node.wbsElementId]?.[userId]?.[col.key]?.ac?.value || 0
                     : col.dates.reduce((sum, d) => sum + (data[node.wbsElementId]?.[userId]?.[d.format('YYYY-MM-DD')]?.ac?.value || 0), 0);
 
                 return (
