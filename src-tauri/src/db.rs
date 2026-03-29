@@ -957,14 +957,25 @@ pub async fn list_all_progress_updates_for_plan_version(pool: &SqlitePool, plan_
 
 pub async fn upsert_progress_update(pool: &SqlitePool, wbs_element_id: i64, reported_by_user_id: i64, report_date: NaiveDate, progress_percent: Option< f64 >) -> DbResult< () > {
     let mut tx = pool.begin().await?;
-    let existing_id: Option< i64 > = sqlx::query_scalar("SELECT id FROM progress_updates WHERE wbs_element_id = ? AND report_date = ? AND is_deleted = false").bind(wbs_element_id).bind(report_date).fetch_optional(&mut *tx).await?;
+    upsert_progress_update_tx(&mut tx, wbs_element_id, reported_by_user_id, report_date, progress_percent).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn upsert_progress_update_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    wbs_element_id: i64,
+    reported_by_user_id: i64,
+    report_date: NaiveDate,
+    progress_percent: Option< f64 >,
+) -> DbResult< () > {
+    let existing_id: Option< i64 > = sqlx::query_scalar("SELECT id FROM progress_updates WHERE wbs_element_id = ? AND report_date = ? AND is_deleted = false").bind(wbs_element_id).bind(report_date).fetch_optional(&mut **tx).await?;
     match (progress_percent, existing_id) {
-        (Some(p), Some(id)) => { sqlx::query("UPDATE progress_updates SET progress_percent = ? WHERE id = ?").bind(p).bind(id).execute(&mut *tx).await?; }
-        (Some(p), None) => { sqlx::query("INSERT INTO progress_updates (wbs_element_id, reported_by_user_id, report_date, progress_percent) VALUES (?, ?, ?, ?)").bind(wbs_element_id).bind(reported_by_user_id).bind(report_date).bind(p).execute(&mut *tx).await?; }
-        (None, Some(id)) => { sqlx::query("UPDATE progress_updates SET is_deleted = true WHERE id = ?").bind(id).execute(&mut *tx).await?; }
+        (Some(p), Some(id)) => { sqlx::query("UPDATE progress_updates SET progress_percent = ? WHERE id = ?").bind(p).bind(id).execute(&mut **tx).await?; }
+        (Some(p), None) => { sqlx::query("INSERT INTO progress_updates (wbs_element_id, reported_by_user_id, report_date, progress_percent) VALUES (?, ?, ?, ?)").bind(wbs_element_id).bind(reported_by_user_id).bind(report_date).bind(p).execute(&mut **tx).await?; }
+        (None, Some(id)) => { sqlx::query("UPDATE progress_updates SET is_deleted = true WHERE id = ?").bind(id).execute(&mut **tx).await?; }
         (None, None) => {}
     }
-    tx.commit().await?;
     Ok(())
 }
 

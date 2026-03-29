@@ -200,6 +200,7 @@ pub struct MappedImportRow {
     pub element_type: Option<db::WbsElementType>,
     pub daily_pvs: HashMap<NaiveDate, f64>,
     pub daily_acs: HashMap<NaiveDate, f64>,
+    pub daily_progresses: HashMap<NaiveDate, f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -914,6 +915,12 @@ pub async fn import_mapped_wbs(
                 for (&date, &ac) in &row.daily_acs {
                     db::upsert_actual_cost_tx(&mut tx, activity_wbs_id, uid, date, Some(ac)).await?;
                 }
+            }
+            
+            // --- Upsert Progress ---
+            let reporter_id = user_id.unwrap_or(1); // Use assigned user or default to ID 1
+            for (&date, &prog) in &row.daily_progresses {
+                db::upsert_progress_update_tx(&mut tx, activity_wbs_id, reporter_id, date, Some(prog)).await?;
             }
         }
     }
