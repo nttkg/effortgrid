@@ -25,7 +25,6 @@ import { z } from 'zod';
 import { IconPlus, IconTree, IconLayoutDashboard, IconCalendarStats, IconDeviceFloppy, IconBriefcase, IconUsers, IconDatabase, IconFlag } from '@tabler/icons-react';
 import { Portfolio, PlanVersion, AppSettings } from './types';
 import { WbsListView } from './features/wbs/WbsListView';
-import { AllocationGrid } from './features/allocations/AllocationGrid';
 import { ExecutionView } from './features/execution/ExecutionView';
 import { DashboardView } from './features/dashboard/DashboardView';
 import { MilestoneView } from './features/milestones/MilestoneView';
@@ -353,15 +352,8 @@ function App() {
           />
           <NavLink
             href="#"
-            label="Resource Allocation"
+            label="Tracking Matrix"
             leftSection={<IconCalendarStats size="1rem" />}
-            active={activeView === 'allocations'}
-            onClick={() => setActiveView('allocations')}
-          />
-          <NavLink
-            href="#"
-            label="Execution (Actuals/EV)"
-            leftSection={<IconBriefcase size="1rem" />}
             active={activeView === 'execution'}
             onClick={() => setActiveView('execution')}
           />
@@ -412,7 +404,6 @@ function App() {
         <AppShell.Main>
           {activeView === 'dashboard' && <DashboardView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} dbPath={dbPath} />}
           {activeView === 'wbs' && <WbsListView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} />}
-          {activeView === 'allocations' && <AllocationGrid planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} />}
           {activeView === 'execution' && <ExecutionView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} />}
           {activeView === 'milestones' && <MilestoneView planVersionId={selectedPlanVersionId ? Number(selectedPlanVersionId) : null} isReadOnly={isReadOnly} portfolioId={selectedPortfolioId ? Number(selectedPortfolioId) : null} />}
           {activeView === 'users' && <UserManagementView />}
