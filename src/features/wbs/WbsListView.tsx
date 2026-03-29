@@ -635,7 +635,6 @@ export function WbsListView({ planVersionId, isReadOnly }: WbsListViewProps) {
               placeholder="Set Est. PV"
               hideControls
               min={0}
-              clearable
               size="xs"
             />
             <Button size="xs" onClick={handleBulkUpdate}>Apply Updates</Button>
