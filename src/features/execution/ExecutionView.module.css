@@ -195,7 +195,6 @@
 .ac_input_native[readonly] {
     background-color: transparent;
     cursor: default;
-    color: var(--mantine-color-dimmed);
 }
 
 /* Hide number arrows (spinners) */
