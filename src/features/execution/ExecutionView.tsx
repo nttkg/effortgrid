@@ -12,8 +12,8 @@ import { useUsers } from '../../hooks/useUsers';
 import { ImportWizardModal } from '../../components/ImportWizardModal';
 import dayjs from 'dayjs';
 import classes from './ExecutionView.module.css';
-import weekOfYear from 'dayjs/plugin/weekOfYear';
-dayjs.extend(weekOfYear);
+import isoWeek from 'dayjs/plugin/isoWeek';
+dayjs.extend(isoWeek);
 
 
 // --- Types ---
@@ -697,10 +697,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         }));
     }
     
-    // Weekly
+    // Weekly (ISO Monday-start)
     const weeksMap = new Map<string, dayjs.Dayjs[]>();
     daysInMonth.forEach(day => {
-        const weekKey = `${day.year()}-W${day.week()}`;
+        const weekKey = `${day.isoWeekYear()}-W${day.isoWeek()}`;
         if (!weeksMap.has(weekKey)) {
             weeksMap.set(weekKey, []);
         }
@@ -714,7 +714,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         weeklyColumns.push({
             key: key,
             type: 'week' as const,
-            label: `W${firstDay.week()} (${firstDay.format('M/D')}-${lastDay.format('M/D')})`,
+            label: `W${firstDay.isoWeek()} (${firstDay.format('M/D')}-${lastDay.format('M/D')})`,
             dates: dates,
         });
     }
