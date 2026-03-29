@@ -47,6 +47,14 @@ interface GridProps {
   isReadOnly: boolean;
 }
 // --- Helper Functions ---
+function useEvent<T extends (...args: any[]) => any>(handler: T) {
+  const handlerRef = useRef(handler);
+  useEffect(() => { handlerRef.current = handler; });
+  return useCallback((...args: Parameters<T>) => {
+    const fn = handlerRef.current;
+    return fn(...args);
+  }, []);
+}
 const getBadgeColor = (type: WbsElementType) => ({ Project: 'blue', WorkPackage: 'cyan', Activity: 'teal' }[type] || 'gray');
 
 // --- Sub-components ---
@@ -800,7 +808,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     };
   }, [tree, columns, assignedUsers, executionData]);
 
-  const handlePvChange = useCallback(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
+  const handlePvChange = useEvent(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
     if (isReadOnly || !planVersionId) return;
 
     setExecutionData(prev => {
@@ -831,9 +839,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         console.error('Failed to upsert daily allocation:', error); 
         fetchAllData(); // revert on error
     }
-  }, [isReadOnly, planVersionId, fetchAllData]);
+  });
 
-  const handleAcChange = useCallback(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
+  const handleAcChange = useEvent(async (wbsElementId: number, userId: number, date: string, value: number | null) => {
     if (isReadOnly) return;
 
     setExecutionData(prev => {
@@ -862,9 +870,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         console.error('Failed to upsert actual cost:', error); 
         fetchAllData(); // revert on error
     }
-  }, [isReadOnly, fetchAllData]);
+  });
 
-  const handleProgressChange = useCallback(async (wbsElementId: number, date: string, value: number | null) => {
+  const handleProgressChange = useEvent(async (wbsElementId: number, date: string, value: number | null) => {
     if (isReadOnly) return;
     
     setProgressData(prev => {
@@ -888,11 +896,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         console.error("Failed to upsert progress:", err);
         fetchAllData(); // revert on error
     }
-  }, [isReadOnly, fetchAllData]);
+  });
   
   const focusCell = (wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => document.getElementById(`cell-${metricType}-${wbsElementId}-${userId}-${date}`)?.focus();
 
-  const handleAddUserToActivity = (wbsElementId: number, userId: number) => {
+  const handleAddUserToActivity = useEvent((wbsElementId: number, userId: number) => {
     setAssignedUsers(prev => {
       const newAssigned = { ...prev };
       const newSet = new Set(newAssigned[wbsElementId]); // Copy existing set or create new
@@ -900,9 +908,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       newAssigned[wbsElementId] = newSet;
       return newAssigned;
     });
-  };
+  });
 
-  const handleCellMouseDown = (e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
+  const handleCellMouseDown = useEvent((e: React.MouseEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
     e.preventDefault();
     e.currentTarget.focus();
     setIsSelecting(true);
@@ -943,9 +951,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         setSelectionAnchor(cellId);
         setSelectedCells(new Set([cellId]));
     }
-  };
+  });
 
-  const handleCellMouseOver = (wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
+  const handleCellMouseOver = useEvent((wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
     if (!isSelecting || !selectionAnchor) return;
     
     const anchorType = selectionAnchor.split('-')[1];
@@ -977,9 +985,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         }
     }
     setSelectedCells(newSelectedCells);
-  };
+  });
 
-  const handleCellKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
+  const handleCellKeyDown = useEvent((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
     const { key } = e;
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key) || viewMode === 'weekly') return;
     e.preventDefault();
@@ -1043,9 +1051,9 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
               .catch(err => { console.error("Bulk PV delete failed:", err); fetchAllData(); });
         }
     }
-  }, [activityRowIds, columnKeys, selectedCells, fetchAllData, viewMode, planVersionId]);
+  });
 
-  const handleCellPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startUserId: number, startDate: string, metricType: 'pv' | 'ac') => {
+  const handleCellPaste = useEvent(async (e: React.ClipboardEvent<HTMLInputElement>, startWbsId: number, startUserId: number, startDate: string, metricType: 'pv' | 'ac') => {
     e.preventDefault();
     if (isReadOnly || viewMode === 'weekly' || !planVersionId) return;
 
@@ -1146,7 +1154,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         setAllPlanAllocations(newAllocs);
       } catch (err) { console.error("Bulk PV paste failed:", err); fetchAllData(); }
     }
-  }, [activityRowIds, columnKeys, isReadOnly, fetchAllData, selectedCells, viewMode, planVersionId]);
+  });
 
   const handleCopyTsv = async () => {
     const rows: string[][] = [];
