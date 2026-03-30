@@ -33,18 +33,14 @@
     bottom: 0;
 }
 
-/* 行全体に背景を敷くことで、セル間の水平サブピクセル隙間（透け）をボーダーを消さずにブロック */
-.table thead tr,
-.table tfoot tr {
-    background-color: var(--mantine-color-dark-7);
-}
-
 .table thead th,
 .table tfoot th,
 .table tfoot td {
     background-color: var(--mantine-color-dark-7);
     /* 必須: 縦方向の固定を復旧 */
     position: sticky;
+    /* 透け防止: 隙間をボーダー色(dark-4)の影で埋める */
+    box-shadow: 0 1px 0 var(--mantine-color-dark-4), 0 -1px 0 var(--mantine-color-dark-4);
 }
 
 .table thead th {
@@ -66,9 +62,9 @@
 .table tfoot .total_col {
     z-index: 30;
     background-color: var(--mantine-color-dark-7) !important;
-    /* 交差部分は最前面＋縦横固定。垂直隙間(box-shadow)も上書きして色を合わせる */
+    /* 交差部分は最前面＋縦横固定。右と下の隙間をボーダー色の影で埋める */
     position: sticky !important;
-    box-shadow: 1px 0 0 var(--mantine-color-dark-7) !important;
+    box-shadow: 1px 0 0 var(--mantine-color-dark-4), 0 1px 0 var(--mantine-color-dark-4), 0 -1px 0 var(--mantine-color-dark-4) !important;
 }
 
 /* セルのパディングを極限まで削り、ズームに連動させる */
@@ -87,8 +83,8 @@
     z-index: 10;
     background-color: var(--mantine-color-body) !important;
     overflow: hidden;
-    /* 透け防止2: 1pxの影でズーム時のサブピクセルの隙間を埋める */
-    box-shadow: 1px 0 0 var(--mantine-color-body);
+    /* 透け防止2: ボーダー色(dark-4)の影で隙間を埋め、枠線を維持する */
+    box-shadow: 1px 0 0 var(--mantine-color-dark-4) !important;
 }
 
 /* Metricカラムの幅 */
@@ -103,7 +99,7 @@
     position: sticky !important;
     left: calc(350px * var(--zoom-factor));
     z-index: 10;
-    box-shadow: 1px 0 0 var(--mantine-color-dark-8);
+    box-shadow: 1px 0 0 var(--mantine-color-dark-4) !important;
 }
 
 /* Totalカラムの幅 */
@@ -116,7 +112,7 @@
     position: sticky !important;
     left: calc((350px + 4rem) * var(--zoom-factor));
     z-index: 10;
-    box-shadow: 1px 0 0 var(--mantine-color-dark-8);
+    box-shadow: 1px 0 0 var(--mantine-color-dark-4) !important;
 }
 
 
