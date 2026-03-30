@@ -14,6 +14,9 @@
     table-layout: fixed;
     /* テーブル全体のフォントサイズをズームに連動 */
     font-size: calc(14px * var(--zoom-factor));
+    /* 透け防止1: テーブル自体の背景色を敷き、Mantineの半透明枠線を不透明なダークグレーで強制上書き */
+    background-color: var(--mantine-color-body);
+    --table-border-color: #373A40 !important;
 }
 
 .table thead,
@@ -34,21 +37,19 @@
 .table tfoot th,
 .table tfoot td {
     background-color: var(--mantine-color-dark-7);
-    position: relative; /* 疑似要素の基準位置 */
+    /* 必須: 縦方向の固定を復旧 */
+    position: sticky;
 }
 
-/* 透け防止のための裏壁（疑似要素） */
-.table thead th::after,
-.table tfoot th::after,
-.table tfoot td::after {
-    content: '';
-    position: absolute;
+.table thead th {
     top: 0;
-    left: 0;
-    right: 0;
+    z-index: 20;
+}
+
+.table tfoot th,
+.table tfoot td {
     bottom: 0;
-    background-color: var(--mantine-color-dark-7);
-    z-index: -1;
+    z-index: 20;
 }
 
 .table thead .wbs_col,
@@ -59,6 +60,8 @@
 .table tfoot .total_col {
     z-index: 30;
     background-color: var(--mantine-color-dark-7);
+    /* 交差部分は最前面＋縦横固定 */
+    position: sticky !important;
 }
 
 /* セルのパディングを極限まで削り、ズームに連動させる */
@@ -72,22 +75,13 @@
     width: calc(350px * var(--zoom-factor));
     min-width: calc(350px * var(--zoom-factor));
     max-width: calc(350px * var(--zoom-factor));
-    position: sticky;
+    position: sticky !important;
     left: 0;
     z-index: 10;
-    background-color: var(--mantine-color-body);
+    background-color: var(--mantine-color-body) !important;
     overflow: hidden;
-}
-/* 透け防止のための裏壁 */
-.wbs_col::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--mantine-color-body);
-    z-index: -1;
+    /* 透け防止2: 1pxの影でズーム時のサブピクセルの隙間を埋める */
+    box-shadow: 1px 0 0 var(--mantine-color-body);
 }
 
 /* Metricカラムの幅 */
@@ -98,20 +92,11 @@
     text-align: center;
     font-size: var(--mantine-font-size-xs);
     color: var(--mantine-color-dimmed);
-    background-color: var(--mantine-color-dark-8);
-    position: sticky;
+    background-color: var(--mantine-color-dark-8) !important;
+    position: sticky !important;
     left: calc(350px * var(--zoom-factor));
     z-index: 10;
-}
-.metric_col::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--mantine-color-dark-8);
-    z-index: -1;
+    box-shadow: 1px 0 0 var(--mantine-color-dark-8);
 }
 
 /* Totalカラムの幅 */
@@ -120,20 +105,11 @@
     min-width: calc(5rem * var(--zoom-factor));
     max-width: calc(5rem * var(--zoom-factor));
     text-align: right;
-    background-color: var(--mantine-color-dark-8);
-    position: sticky;
+    background-color: var(--mantine-color-dark-8) !important;
+    position: sticky !important;
     left: calc((350px + 4rem) * var(--zoom-factor));
     z-index: 10;
-}
-.total_col::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--mantine-color-dark-8);
-    z-index: -1;
+    box-shadow: 1px 0 0 var(--mantine-color-dark-8);
 }
 
 
