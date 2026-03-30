@@ -6,7 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { MonthPickerInput } from '@mantine/dates';
-import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus, IconZoomOut, IconZoomIn, IconClipboardCopy, IconTarget, IconChevronDown } from '@tabler/icons-react';
+import { IconChevronLeft, IconChevronRight, IconAlertCircle, IconPlus, IconZoomOut, IconZoomIn, IconClipboardCopy, IconTarget, IconChevronDown, IconChevronsDown, IconChevronsRight } from '@tabler/icons-react';
 import { WbsElementDetail, WbsElementType, PvAllocation, ActualCost, ExecutionData, User } from '../../types';
 import { useUsers } from '../../hooks/useUsers';
 import { ImportWizardModal } from '../../components/ImportWizardModal';
@@ -172,6 +172,7 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
     data: ExecutionMap;
     columns: Column[];
 }) => {
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
 
     const dailyTotals = useMemo(() => {
@@ -207,12 +208,19 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
     return (
         <Table.Tfoot>
             <Table.Tr>
-                <Table.Th className={classes.wbs_col}>Resource Capacity</Table.Th>
+                <Table.Th className={classes.wbs_col}>
+                  <Group gap="xs" wrap="nowrap">
+                    <ActionIcon variant="subtle" size="sm" color="gray" onClick={() => setIsCollapsed(!isCollapsed)}>
+                      {isCollapsed ? <IconChevronRight size={14} /> : <IconChevronDown size={14} />}
+                    </ActionIcon>
+                    <Text size="sm" fw={700}>Resource Capacity</Text>
+                  </Group>
+                </Table.Th>
                 <Table.Th className={classes.metric_col}></Table.Th>
                 <Table.Th className={classes.total_col}></Table.Th>
                 <Table.Th colSpan={columns.length}></Table.Th>
             </Table.Tr>
-            {activeUserIds.map(userId => {
+            {!isCollapsed && activeUserIds.map(userId => {
                 const user = userMap.get(userId);
                 if (!user) return null;
 
@@ -861,6 +869,17 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     });
   }, []);
 
+  const handleExpandAll = useCallback(() => {
+    setCollapsedNodes(new Set());
+  }, []);
+
+  const handleCollapseAll = useCallback(() => {
+    const parentIds = elements
+      .filter(e => e.elementType === 'Project' || e.elementType === 'WorkPackage')
+      .map(e => e.wbsElementId);
+    setCollapsedNodes(new Set(parentIds));
+  }, [elements]);
+
   const flattenedTree = useMemo(() => {
     const flat: { node: TreeNode, level: number }[] = [];
     const traverse = (nodes: TreeNode[], level: number) => {
@@ -1447,7 +1466,23 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
           <Table className={classes.table} withColumnBorders verticalSpacing="0" horizontalSpacing="0">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th className={classes.wbs_col}>WBS Element</Table.Th>
+                <Table.Th className={classes.wbs_col}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Text size="sm" fw={700}>WBS Element</Text>
+                    <Group gap={4}>
+                      <Tooltip label="Expand All">
+                        <ActionIcon variant="subtle" size="sm" color="gray" onClick={handleExpandAll}>
+                          <IconChevronsDown size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Collapse All">
+                        <ActionIcon variant="subtle" size="sm" color="gray" onClick={handleCollapseAll}>
+                          <IconChevronsRight size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  </Group>
+                </Table.Th>
                 <Table.Th className={classes.metric_col}>Metric</Table.Th>
                 <Table.Th className={classes.total_col}>Total</Table.Th>
                 {columns.map((col) => {
