@@ -244,25 +244,29 @@ function WbsElementRow({
           />
         </Table.Td>
         <Table.Td>
-          <Tooltip label="Add child element">
-            <ActionIcon
-              variant="subtle"
-              onClick={() => onAddChild(element)}
-              disabled={elementType === 'Activity' || isReadOnly}
-            >
-              <IconSitemap size={16} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label="Manage Allocations">
-            <ActionIcon
-              variant="subtle"
-              color="blue"
-              onClick={() => onOpenAllocation(element)}
-              disabled={elementType !== 'Activity' || isReadOnly}
-            >
-              <IconCalendarStats size={16} />
-            </ActionIcon>
-          </Tooltip>
+          <Group gap="xs" wrap="nowrap">
+            <Tooltip label="Add child element">
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={() => onAddChild(element)}
+                disabled={elementType === 'Activity' || isReadOnly}
+              >
+                <IconSitemap size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Manage Allocations">
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                color="blue"
+                onClick={() => onOpenAllocation(element)}
+                disabled={elementType !== 'Activity' || isReadOnly}
+              >
+                <IconCalendarStats size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Table.Td>
       </Table.Tr>
       {!isCollapsed && element.children.map((child) => (
