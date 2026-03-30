@@ -222,7 +222,7 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
                 return (
                     <React.Fragment key={userId}>
                         <Table.Tr>
-                            <Table.Td rowSpan={2} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                            <Table.Td rowSpan={2} className={classes.wbs_col} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
                                 <Group gap="xs">
                                     <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
                                     <Text size="xs">{user.name}</Text>
