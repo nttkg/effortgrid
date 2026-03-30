@@ -158,7 +158,7 @@ export function DashboardWidget({ config, planVersionId, onUpdate, onRemove }: W
             <Line type="monotone" dataKey="cumulativeEv" name="EV" stroke="#82ca9d" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
         </LineChart>
       </ResponsiveContainer>
-      <Text size="sm" fw={500} mt="md">ETC (Estimate to Complete)</Text>
+      <Text size="sm" fw={500} mt="md">EAC Forecast (Estimate At Completion)</Text>
       <ResponsiveContainer width="100%" height={250}>
         <ComposedChart data={sCurveData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }} syncId={config.id}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -166,9 +166,23 @@ export function DashboardWidget({ config, planVersionId, onUpdate, onRemove }: W
             <YAxis />
             <Tooltip />
             <Legend />
-            <Area type="monotone" dataKey="actualEtc" stackId="a" stroke="#4c6a85" fill="#4c6a85" name="ETC (Actual)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
-            <Area type="monotone" dataKey="cumulativeEv" stackId="a" stroke="#82ca9d" fill="#82ca9d" name="EV" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="plannedEtc" stroke="#ff7300" strokeWidth={2} name="ETC (Planned)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }}/>
+            <Area type="monotone" dataKey="cumulativeAc" stackId="a" stroke="#ca4f4f" fill="#ca4f4f" name="AC (Actual Cost)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
+            <Area type="monotone" dataKey="actualEtc" stackId="a" stroke="#4c6a85" fill="#4c6a85" name="ETC (Estimate to Complete)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="bac" stroke="#ff7300" strokeWidth={2} strokeDasharray="5 5" name="BAC (Budget)" dot={false} activeDot={false}/>
+            <Brush dataKey="date" height={30} stroke="#8884d8" />
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <Text size="sm" fw={500} mt="xl">ETC Burndown (Remaining Work)</Text>
+      <ResponsiveContainer width="100%" height={250}>
+        <ComposedChart data={sCurveData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }} syncId={config.id}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="plannedEtc" stroke="#8884d8" strokeWidth={2} strokeDasharray="5 5" name="Ideal Burndown (Planned ETC)" dot={false} activeDot={false} />
+            <Line type="monotone" dataKey="actualEtc" stroke="#4c6a85" strokeWidth={3} name="Actual Burndown (Current ETC)" dot={{ r: 3, strokeWidth: 2 }} activeDot={{ r: 5 }} />
             <Brush dataKey="date" height={30} stroke="#8884d8" />
         </ComposedChart>
       </ResponsiveContainer>
