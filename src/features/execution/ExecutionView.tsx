@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { ask } from '@tauri-apps/plugin-dialog';
 import {
   Group, Title, Text, Table, NumberInput, Badge, Box, Loader, Center, Alert, Stack, ActionIcon, Menu, Avatar, Tooltip, rem, SegmentedControl, Button, ScrollArea, Modal,
 } from '@mantine/core';
@@ -293,6 +294,7 @@ const gridRowAreEqual = (prevProps: any, nextProps: any) => {
   if (prevProps.isReadOnly !== nextProps.isReadOnly) return false;
   if (prevProps.isCollapsed !== nextProps.isCollapsed) return false;
   if (prevProps.onToggleCollapse !== nextProps.onToggleCollapse) return false;
+  if (prevProps.onWeeklyChange !== nextProps.onWeeklyChange) return false;
 
   return true;
 };
@@ -301,12 +303,13 @@ const GridRow = React.memo(({
     node, level, columns, data, progressData, allElements, allPlanAllocations, allPlanActuals, users, assignedUsersMap,
     onPvChange, onAcChange, onProgressChange, isReadOnly, onAddUser,
     onCellKeyDown, onCellPaste, onCellMouseDown, onCellMouseOver,
-    isCollapsed, onToggleCollapse
+    isCollapsed, onToggleCollapse, onWeeklyChange
 }: {
   node: TreeNode; level: number; columns: Column[]; data: ExecutionMap; progressData: { [wbsId: number]: { [date: string]: { id: number; value: number } } }; allElements: WbsElementDetail[]; allPlanAllocations: PvAllocation[]; allPlanActuals: ActualCost[]; users: User[];
   assignedUsersMap: { [wbsId: number]: Set<number> };
   onPvChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
   onAcChange: (wbsElementId: number, userId: number, date: string, value: number | null) => void;
+  onWeeklyChange: (wbsElementId: number, userId: number, weekKey: string, value: number | null, metricType: 'pv' | 'ac') => void;
   onProgressChange: (wbsElementId: number, date: string, value: number | null) => void;
   isReadOnly: boolean;
   onAddUser: (wbsElementId: number, userId: number) => void;
@@ -640,9 +643,15 @@ const GridRow = React.memo(({
                         onMouseOver={onCellMouseOver}
                       />
                     ) : (
-                      <div style={{ padding: '0 var(--mantine-spacing-xs)', minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', color: 'var(--mantine-color-blue-3)'}}>
-                        {value > 0 ? value.toFixed(1) : ''}
-                      </div>
+                      <PvInputCell
+                        wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
+                        initialPv={value || undefined}
+                        onCommit={(wbs, uid, d, val) => onWeeklyChange(wbs, uid, d, val, 'pv')}
+                        isReadOnly={isReadOnly}
+                        onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                        onMouseDown={onCellMouseDown}
+                        onMouseOver={onCellMouseOver}
+                      />
                     )}
                   </Table.Td>
                 )
@@ -688,9 +697,15 @@ const GridRow = React.memo(({
                         onMouseOver={onCellMouseOver}
                       />
                     ) : (
-                      <div style={{padding: '0 var(--mantine-spacing-xs)', minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end'}}>
-                        {value > 0 ? value.toFixed(1) : ''}
-                      </div>
+                      <AcInputCell
+                        wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
+                        initialAc={value || undefined}
+                        onCommit={(wbs, uid, d, val) => onWeeklyChange(wbs, uid, d, val, 'ac')}
+                        isReadOnly={isReadOnly || isUnassigned}
+                        onKeyDown={onCellKeyDown} onPaste={onCellPaste}
+                        onMouseDown={onCellMouseDown}
+                        onMouseOver={onCellMouseOver}
+                      />
                     )}
                   </Table.Td>
                 );
@@ -761,8 +776,8 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     let end;
     
     if (viewMode === 'daily') {
-      // Dailyモード: 従来どおり1ヶ月分（月末まで）表示
-      end = start.endOf('month');
+      // Dailyモード: 開始月から2ヶ月分（末日まで）表示
+      end = start.add(2, 'month').subtract(1, 'day');
     } else {
       // Weeklyモード: 月曜始まりで26週間（約半年）表示
       start = start.startOf('isoWeek');
@@ -994,6 +1009,94 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     } catch (error) { 
         console.error('Failed to upsert daily allocation:', error); 
         fetchAllData(); // revert on error
+    }
+  });
+
+  const handleWeeklyChange = useEvent(async (wbsElementId: number, userId: number, weekKey: string, value: number | null, metricType: 'pv' | 'ac') => {
+    if (isReadOnly || !planVersionId) return;
+
+    const weekCol = columns.find(c => c.key === weekKey) as WeekColumn | undefined;
+    if (!weekCol || weekCol.type !== 'week') return;
+
+    const targetDateStr = metricType === 'pv' 
+      ? weekCol.dates[0].format('YYYY-MM-DD') 
+      : weekCol.dates[weekCol.dates.length - 1].format('YYYY-MM-DD');
+
+    const existingEntries = executionData[wbsElementId]?.[userId] || {};
+    let hasOtherDaysData = false;
+    
+    weekCol.dates.forEach(d => {
+      const dateStr = d.format('YYYY-MM-DD');
+      if (dateStr !== targetDateStr) {
+        if (metricType === 'pv' && existingEntries[dateStr]?.pv) hasOtherDaysData = true;
+        if (metricType === 'ac' && existingEntries[dateStr]?.ac) hasOtherDaysData = true;
+      }
+    });
+
+    if (hasOtherDaysData && value !== null) {
+      const confirmed = await ask(
+        `There are existing ${metricType.toUpperCase()} values on other days in this week.\nDo you want to overwrite and consolidate them to ${metricType === 'pv' ? 'Monday' : 'Sunday'} (${targetDateStr})?`,
+        { title: 'Confirm Consolidation', kind: 'warning' }
+      );
+      if (!confirmed) {
+        fetchAllData();
+        return;
+      }
+    }
+
+    if (metricType === 'pv') {
+      const allocations = weekCol.dates.map(d => {
+        const dateStr = d.format('YYYY-MM-DD');
+        return {
+          wbsElementId,
+          userId: userId === 0 ? null : userId,
+          date: dateStr,
+          plannedValue: dateStr === targetDateStr ? value : null
+        };
+      });
+      
+      setExecutionData(prev => {
+          const newData = JSON.parse(JSON.stringify(prev));
+          allocations.forEach(item => {
+              const uId = item.userId ?? 0;
+              const ensurePath = (wbsId: number, uId: number, d: string) => { if (!newData[wbsId]) newData[wbsId] = {}; if (!newData[wbsId][uId]) newData[wbsId][uId] = {}; if (!newData[wbsId][uId][d]) newData[wbsId][uId][d] = {}; };
+              ensurePath(item.wbsElementId, uId, item.date);
+              if (item.plannedValue !== null && item.plannedValue > 0) { newData[item.wbsElementId][uId][item.date].pv = item.plannedValue; }
+              else { if (newData[item.wbsElementId]?.[uId]?.[item.date]?.pv) { delete newData[item.wbsElementId][uId][item.date].pv; }}
+          });
+          return newData;
+      });
+
+      try {
+        await invoke('upsert_daily_allocations_bulk', { payload: { planVersionId, allocations } });
+        const newAllocs = await invoke<PvAllocation[]>('list_all_allocations_for_plan_version', { planVersionId });
+        setAllPlanAllocations(newAllocs);
+      } catch (err) { console.error("Weekly PV update failed:", err); fetchAllData(); }
+    } else {
+      if (userId === 0) return;
+      const costs = weekCol.dates.map(d => {
+        const dateStr = d.format('YYYY-MM-DD');
+        return {
+          wbsElementId,
+          userId: userId,
+          workDate: dateStr,
+          actualCost: dateStr === targetDateStr ? value : null
+        };
+      });
+
+      setExecutionData(prev => {
+          const newData = JSON.parse(JSON.stringify(prev));
+          costs.forEach(item => {
+              const ensurePath = (wbsId: number, uId: number, d: string) => { if (!newData[wbsId]) newData[wbsId] = {}; if (!newData[wbsId][uId]) newData[wbsId][uId] = {}; if (!newData[wbsId][uId][d]) newData[wbsId][uId][d] = {}; };
+              ensurePath(item.wbsElementId, item.userId, item.workDate);
+              if(item.actualCost !== null && item.actualCost > 0) { newData[item.wbsElementId][item.userId][item.workDate].ac = { id: -1, value: item.actualCost }; } 
+              else { if(newData[item.wbsElementId]?.[item.userId]?.[item.workDate]?.ac) { delete newData[item.wbsElementId][item.userId][item.workDate].ac; } }
+          });
+          return newData;
+      });
+
+      try { await invoke('upsert_actual_costs_bulk', { payload: { costs } }); fetchAllData(); } 
+      catch (err) { console.error("Weekly AC update failed:", err); fetchAllData(); }
     }
   });
 
@@ -1606,6 +1709,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                     onCellMouseOver={handleCellMouseOver}
                     isCollapsed={collapsedNodes.has(node.wbsElementId)}
                     onToggleCollapse={toggleCollapse}
+                    onWeeklyChange={handleWeeklyChange}
                 />
               )}
             </Table.Tbody>
