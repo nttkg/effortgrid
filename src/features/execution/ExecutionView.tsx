@@ -83,6 +83,12 @@ const ProgressInputCell = React.memo(({ wbsElementId, date, initialValue, onComm
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleBlur(); // 確定するがフォーカスはそのまま
+          }
+        }}
         step="0.1" min="0" max="100"
         readOnly={isReadOnly}
       />
@@ -121,7 +127,13 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={handleBlur}
-      onKeyDown={(e) => onKeyDown(e as any, wbsElementId, userId, date, 'pv')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleBlur(); // 確定するがフォーカスはそのまま
+        }
+        onKeyDown(e as any, wbsElementId, userId, date, 'pv');
+      }}
       onPaste={(e) => onPaste(e as any, wbsElementId, userId, date, 'pv')}
       onMouseDown={(e) => onMouseDown(e as any, wbsElementId, userId, date, 'pv')}
       onMouseOver={() => onMouseOver(wbsElementId, userId, date, 'pv')}
@@ -159,7 +171,13 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={handleBlur}
-      onKeyDown={(e) => onKeyDown(e as any, wbsElementId, userId, date, 'ac')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleBlur(); // 確定するがフォーカスはそのまま
+        }
+        onKeyDown(e as any, wbsElementId, userId, date, 'ac');
+      }}
       onPaste={(e) => onPaste(e as any, wbsElementId, userId, date, 'ac')}
       onMouseDown={(e) => onMouseDown(e as any, wbsElementId, userId, date, 'ac')}
       onMouseOver={() => onMouseOver(wbsElementId, userId, date, 'ac')}
@@ -1074,7 +1092,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
           return newData;
       });
 
-      try { await invoke('upsert_actual_costs_bulk', { payload: { costs } }); fetchAllData(); } 
+      try { 
+        await invoke('upsert_actual_costs_bulk', { payload: { costs } });
+        const newActuals = await invoke<ActualCost[]>('list_all_actuals_for_plan_version', { planVersionId });
+        setAllPlanActuals(newActuals);
+      } 
       catch (err) { console.error("Weekly AC update failed:", err); fetchAllData(); }
     }
   };
@@ -1145,6 +1167,8 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     try {
       // NOTE: Unlike PV, AC user_id is NOT optional. We assume a valid user is assigned.
       await invoke('upsert_actual_cost', { payload: { wbsElementId, userId, workDate: date, actualCost: value } });
+      const newActuals = await invoke<ActualCost[]>('list_all_actuals_for_plan_version', { planVersionId });
+      setAllPlanActuals(newActuals);
     } catch (error) { 
         console.error('Failed to upsert actual cost:', error); 
         fetchAllData(); // revert on error
@@ -1274,7 +1298,10 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
 
   const handleCellKeyDown = useEvent((e: React.KeyboardEvent<HTMLInputElement>, wbsElementId: number, userId: number, date: string, metricType: 'pv' | 'ac') => {
     const { key } = e;
-    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key) || viewMode === 'weekly') return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
+    
+    // Weeklyモードでは一括削除の挙動が複雑なためDelete/Backspaceのみ無効化（矢印キーは許可）
+    if (viewMode === 'weekly' && ['Delete', 'Backspace'].includes(key)) return;
     e.preventDefault();
 
     const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
