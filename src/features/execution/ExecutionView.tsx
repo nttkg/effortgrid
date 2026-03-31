@@ -756,9 +756,19 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       selectedCellsRef.current = newSelection;
   });
 
-  const daysInMonth = useMemo(() => {
-    const start = dayjs(currentMonth).startOf('month');
-    const end = dayjs(currentMonth).endOf('month');
+  const daysInWindow = useMemo(() => {
+    let start = dayjs(currentMonth).startOf('month');
+    let end;
+    
+    if (viewMode === 'daily') {
+      // Dailyモード: 開始月から2ヶ月分（末日まで）表示
+      end = start.add(2, 'month').subtract(1, 'day');
+    } else {
+      // Weeklyモード: 月曜始まりで26週間（約半年）表示
+      start = start.startOf('isoWeek');
+      end = start.add(26, 'week').subtract(1, 'day');
+    }
+
     const days: dayjs.Dayjs[] = [];
     let current = start;
     while (current.isBefore(end) || current.isSame(end, 'day')) {
@@ -766,11 +776,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
       current = current.add(1, 'day');
     }
     return days;
-  }, [currentMonth]);
+  }, [currentMonth, viewMode]);
 
   const columns = useMemo((): Column[] => {
     if (viewMode === 'daily') {
-        return daysInMonth.map(d => ({
+        return daysInWindow.map(d => ({
             key: d.format('YYYY-MM-DD'),
             type: 'day' as const,
             date: d,
@@ -779,7 +789,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     
     // Weekly (ISO Monday-start)
     const weeksMap = new Map<string, dayjs.Dayjs[]>();
-    daysInMonth.forEach(day => {
+    daysInWindow.forEach(day => {
         const weekKey = `${day.isoWeekYear()}-W${day.isoWeek()}`;
         if (!weeksMap.has(weekKey)) {
             weeksMap.set(weekKey, []);
@@ -799,15 +809,15 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
         });
     }
     return weeklyColumns;
-  }, [daysInMonth, viewMode]);
+  }, [daysInWindow, viewMode]);
 
   const fetchAllData = useCallback(async () => {
     if (!planVersionId) {
       setElements([]); setExecutionData({}); setAssignedUsers({}); setAllPlanActuals([]); setAllPlanAllocations([]); return;
     }
     setIsLoading(true); setError(null);
-    const start = daysInMonth[0].format('YYYY-MM-DD');
-    const end = daysInMonth[daysInMonth.length - 1].format('YYYY-MM-DD');
+    const start = daysInWindow[0].format('YYYY-MM-DD');
+    const end = daysInWindow[daysInWindow.length - 1].format('YYYY-MM-DD');
 
     try {
       const [wbs, data, allActuals, allAllocs] = await Promise.all([
@@ -869,7 +879,7 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [planVersionId, daysInMonth]);
+  }, [planVersionId, daysInWindow]);
 
   useEffect(() => {
     const handleMouseUp = () => { isSelectingRef.current = false; };
@@ -1559,10 +1569,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
                 {columns.map((col) => {
                   if (col.type === 'day') {
                     const isWeekend = col.date.day() === 0 || col.date.day() === 6;
+                    const isFirstDayOfMonth = col.date.date() === 1;
                     return (
                       <Table.Th key={col.key} className={`${classes.day_header} ${isWeekend ? classes.day_header_weekend : ''}`}>
                         <div>{col.date.format('ddd')}</div>
-                        <div>{col.date.format('D')}</div>
+                        <div>{isFirstDayOfMonth ? col.date.format('M/D') : col.date.format('D')}</div>
                       </Table.Th>
                     );
                   }
