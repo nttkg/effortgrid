@@ -233,7 +233,7 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
                 return (
                     <React.Fragment key={userId}>
                         <Table.Tr>
-                            <Table.Td rowSpan={2} className={classes.wbs_col} style={{ verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                            <Table.Td rowSpan={2} className={classes.wbs_col} style={{ verticalAlign: 'middle', borderBottom: '2px solid var(--mantine-color-dark-3)' }}>
                                 <Group gap="xs">
                                     <Avatar size="sm">{user.name.substring(0, 2)}</Avatar>
                                     <Text size="xs">{user.name}</Text>
@@ -255,8 +255,8 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
                             })}
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Td className={classes.metric_col} style={{ borderTop: 'none', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>AC</Table.Td>
-                            <Table.Td className={classes.total_col} style={{ borderTop: 'none', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                            <Table.Td className={classes.metric_col} style={{ borderTop: 'none', borderBottom: '2px solid var(--mantine-color-dark-3)' }}>AC</Table.Td>
+                            <Table.Td className={classes.total_col} style={{ borderTop: 'none', borderBottom: '2px solid var(--mantine-color-dark-3)' }}>
                                 <Text size="sm" fw="500">{totalAc > 0 ? totalAc.toFixed(1) : ''}</Text>
                             </Table.Td>
                             {columns.map(col => {
@@ -270,7 +270,7 @@ const ResourceCapacityFooter = React.memo(({ users, elements, data, columns }: {
                                     : col.dates.some(d => (dailyTotals[userId]?.[d.format('YYYY-MM-DD')]?.ac || 0) > capacity);
 
                                 return (
-                                    <Table.Td key={`${col.key}-ac`} style={{textAlign: 'right', color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined, borderTop: 'none', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                                    <Table.Td key={`${col.key}-ac`} style={{textAlign: 'right', color: isOverloaded ? 'var(--mantine-color-red-7)' : undefined, borderTop: 'none', borderBottom: '2px solid var(--mantine-color-dark-3)' }}>
                                         {totalAcForPeriod > 0 ? totalAcForPeriod.toFixed(1) : ''}
                                     </Table.Td>
                                 );
@@ -440,6 +440,11 @@ const GridRow = React.memo(({
   }, [assignedUsers, hasUnassignedPv]);
   const availableUsers = useMemo(() => users.filter(u => !assignedUsers.has(u.id)), [users, assignedUsers]);
 
+  const isLastRowOfItem = !isActivity || usersToRender.length === 0;
+  const itemBorderBottom = '2px solid var(--mantine-color-dark-3)';
+  const normalBorderBottom = '1px solid var(--mantine-color-dark-4)';
+  const progressBorderBottom = isLastRowOfItem ? itemBorderBottom : normalBorderBottom;
+
   return (
     <>
       {/* --- 1st Row: PV --- */}
@@ -468,12 +473,19 @@ const GridRow = React.memo(({
               </Menu>
             )}
             <Badge color={getBadgeColor(node.elementType)} size="sm">{node.elementType.substring(0, 1)}</Badge>
-            <Text size="sm" truncate>{node.title}</Text>
+            <Tooltip label={node.title} openDelay={500}>
+              <Text size="sm" truncate style={{ flex: 1 }}>{node.title}</Text>
+            </Tooltip>
           </Group>
         </Table.Td>
         <Table.Td className={`${classes.metric_col} ${classes.readonly_cell}`} style={{ borderBottom: 'none' }}>PV</Table.Td>
         <Table.Td className={`${classes.total_col} ${classes.readonly_cell}`} style={{ borderBottom: 'none' }}>
-          <Text size="sm" c="blue.3">{nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : ''}</Text>
+          <Group gap={2} justify="flex-end" wrap="nowrap">
+            <Text size="sm" c="blue.3">{nodeTotalAllocated > 0 ? nodeTotalAllocated.toFixed(1) : '0.0'}</Text>
+            {node.estimatedPv != null && (
+              <Text size="xs" c="dimmed">/ {node.estimatedPv.toFixed(1)}</Text>
+            )}
+          </Group>
         </Table.Td>
         {columns.map((col) => {
           const val = getRollupValue(col, 'pv');
@@ -505,8 +517,8 @@ const GridRow = React.memo(({
 
       {/* --- 3rd Row: Progress --- */}
       <Table.Tr>
-        <Table.Td className={classes.metric_col} style={{ borderTop: 'none', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>Prog.</Table.Td>
-        <Table.Td className={classes.total_col} style={{ borderTop: 'none', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+        <Table.Td className={classes.metric_col} style={{ borderTop: 'none', borderBottom: progressBorderBottom }}>Prog.</Table.Td>
+        <Table.Td className={classes.total_col} style={{ borderTop: 'none', borderBottom: progressBorderBottom }}>
             <Text size="sm" fw={500} c="teal.4">
                 {isActivity 
                     ? (latestProgress !== null ? `${latestProgress}%` : '') 
@@ -537,7 +549,7 @@ const GridRow = React.memo(({
             }
 
             return (
-                <Table.Td key={`${col.key}-progress`} className={isActivity ? classes.data_cell : `${classes.data_cell} ${classes.readonly_cell}`} style={{ borderTop: 'none', padding: 0, textAlign: 'right', verticalAlign: 'middle', borderBottom: '1px solid var(--mantine-color-dark-4)' }}>
+                <Table.Td key={`${col.key}-progress`} className={isActivity ? classes.data_cell : `${classes.data_cell} ${classes.readonly_cell}`} style={{ borderTop: 'none', padding: 0, textAlign: 'right', verticalAlign: 'middle', borderBottom: progressBorderBottom }}>
                     {displayProg}
                 </Table.Td>
             );
@@ -576,7 +588,7 @@ const GridRow = React.memo(({
           <React.Fragment key={userId}>
             {/* User PV Row */}
             <Table.Tr>
-              <Table.Td rowSpan={2} className={classes.wbs_col} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>
+              <Table.Td rowSpan={2} className={classes.wbs_col} style={{ verticalAlign: 'middle', borderBottom: isLastUser ? itemBorderBottom : 'none' }}>
                 <Group gap="xs" style={{ paddingLeft: (level * 20) + 30 }}>
                   <Avatar size="sm" color={isUnassigned ? 'gray' : 'blue'}>{isUnassigned ? '?' : user?.name.substring(0,2)}</Avatar>
                   <Text size="xs">{isUnassigned ? 'Unassigned' : user?.name}</Text>
@@ -622,8 +634,8 @@ const GridRow = React.memo(({
             </Table.Tr>
             {/* User AC Row */}
             <Table.Tr>
-              <Table.Td className={`${classes.metric_col} ${classes.readonly_cell}`} style={{ borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>AC</Table.Td>
-              <Table.Td className={classes.total_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? '1px solid var(--mantine-color-dark-4)' : 'none' }}>
+              <Table.Td className={`${classes.metric_col} ${classes.readonly_cell}`} style={{ borderTop: 'none', borderBottom: isLastUser ? itemBorderBottom : normalBorderBottom }}>AC</Table.Td>
+              <Table.Td className={classes.total_col} style={{ textAlign: 'right', verticalAlign: 'middle', borderTop: 'none', borderBottom: isLastUser ? itemBorderBottom : normalBorderBottom }}>
                 <Text
                   size="sm"
                   fw={500}
@@ -648,7 +660,7 @@ const GridRow = React.memo(({
                     : col.dates.reduce((sum, d) => sum + (data[node.wbsElementId]?.[userId]?.[d.format('YYYY-MM-DD')]?.ac?.value || 0), 0);
 
                 return (
-                  <Table.Td key={`${dateStr}-ac`} className={`${classes.data_cell} ${ganttClassesAc.join(' ')}`} style={{ padding: 0, borderTop: 'none', textAlign: 'right', verticalAlign: 'middle' }}>
+                  <Table.Td key={`${dateStr}-ac`} className={`${classes.data_cell} ${ganttClassesAc.join(' ')}`} style={{ padding: 0, borderTop: 'none', textAlign: 'right', verticalAlign: 'middle', borderBottom: isLastUser ? itemBorderBottom : normalBorderBottom }}>
                     {col.type === 'day' ? (
                       <AcInputCell
                         wbsElementId={node.wbsElementId} userId={userId} date={dateStr}
