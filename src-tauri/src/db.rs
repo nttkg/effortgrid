@@ -394,6 +394,7 @@ pub async fn update_wbs_elements_bulk(
     milestone_id: Option<Option<i64>>, // Option<Option<i64>> to distinguish "set to NULL" from "do not change"
     estimated_pv: Option<Option<f64>>,
 ) -> DbResult<u64> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
     let ids_json = serde_json::to_string(detail_ids).unwrap();
     let mut total_rows_affected = 0;
@@ -498,6 +499,7 @@ pub async fn upsert_daily_allocation(
     date: NaiveDate,
     planned_value: Option<f64>,
 ) -> DbResult<()> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
     upsert_daily_allocation_tx(&mut tx, plan_version_id, wbs_element_id, user_id, date, planned_value).await?;
     tx.commit().await?;
@@ -575,6 +577,7 @@ pub async fn upsert_daily_allocations_bulk(
     plan_version_id: i64,
     allocations: &[DailyAllocationBulkItem],
 ) -> DbResult<()> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
 
     for alloc in allocations {
@@ -660,6 +663,7 @@ pub async fn add_pv_allocation(
     end_date: NaiveDate,
     planned_value: f64,
 ) -> DbResult<PvAllocation> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let id = sqlx::query(
         "INSERT INTO pv_allocations (plan_version_id, wbs_element_id, user_id, start_date, end_date, planned_value) VALUES (?, ?, ?, ?, ?, ?)",
     )
@@ -683,6 +687,9 @@ pub async fn update_pv_allocation(
     end_date: NaiveDate,
     planned_value: f64,
 ) -> DbResult<PvAllocation> {
+    let (plan_version_id,): (i64,) = sqlx::query_as("SELECT plan_version_id FROM pv_allocations WHERE id = ?").bind(id).fetch_one(pool).await?;
+    ensure_plan_is_draft(pool, plan_version_id).await?;
+
     sqlx::query("UPDATE pv_allocations SET start_date = ?, end_date = ?, planned_value = ? WHERE id = ?")
         .bind(start_date)
         .bind(end_date)
@@ -699,6 +706,9 @@ pub async fn update_pv_allocation(
 }
 
 pub async fn delete_pv_allocation(pool: &SqlitePool, id: i64) -> DbResult<u64> {
+    let (plan_version_id,): (i64,) = sqlx::query_as("SELECT plan_version_id FROM pv_allocations WHERE id = ?").bind(id).fetch_one(pool).await?;
+    ensure_plan_is_draft(pool, plan_version_id).await?;
+
     let rows_affected = sqlx::query("DELETE FROM pv_allocations WHERE id = ?").bind(id)
         .execute(pool).await?.rows_affected();
     Ok(rows_affected)
@@ -709,6 +719,7 @@ pub async fn sync_pv_to_ac_up_to_date(
     plan_version_id: i64,
     up_to_date: NaiveDate,
 ) -> DbResult<()> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
 
     // 1. 指定日以前のPV割当をすべて削除
@@ -748,6 +759,65 @@ pub async fn get_filterable_wbs_nodes(pool: &SqlitePool, plan_version_id: i64) -
     .fetch_all(pool)
     .await?;
     Ok(nodes)
+}
+
+/// Checks if a WBS element is an 'Activity' in the portfolio's current draft plan.
+async fn ensure_wbs_is_draft_activity(pool: &SqlitePool, wbs_element_id: i64) -> DbResult<()> {
+    let (is_draft_activity,): (bool,) = sqlx::query_as(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM wbs_element_details wed
+            JOIN plan_versions pv ON wed.plan_version_id = pv.id
+            WHERE wed.wbs_element_id = ? AND pv.is_draft = 1 AND wed.element_type = 'Activity'
+        )
+        "#,
+    )
+    .bind(wbs_element_id)
+    .fetch_one(pool)
+    .await?;
+
+    if !is_draft_activity {
+        return Err(DbError::Constraint(
+            "Actual costs and progress can only be reported for 'Activity' elements in the working draft.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Efficiently checks if a list of WBS elements are all 'Activity' types in the draft plan.
+async fn ensure_wbs_list_are_draft_activities(pool: &SqlitePool, wbs_element_ids: &[i64]) -> DbResult<()> {
+    if wbs_element_ids.is_empty() {
+        return Ok(());
+    }
+
+    let unique_ids: std::collections::HashSet<_> = wbs_element_ids.iter().cloned().collect();
+    if unique_ids.is_empty() {
+        return Ok(());
+    }
+
+    let params = unique_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT COUNT(DISTINCT wd.wbs_element_id) FROM wbs_element_details wd
+         JOIN plan_versions pv ON wd.plan_version_id = pv.id
+         WHERE wd.wbs_element_id IN ({}) AND pv.is_draft = true AND wd.element_type = 'Activity'",
+        params
+    );
+
+    let mut query = sqlx::query_scalar::<_, i64>(&sql);
+    for id in &unique_ids {
+        query = query.bind(id);
+    }
+
+    let activity_count = query.fetch_one(pool).await?;
+
+    if activity_count as usize == unique_ids.len() {
+        Ok(())
+    } else {
+        Err(DbError::Constraint(
+            "All elements must be 'Activity' types in the current draft plan.".to_string(),
+        ))
+    }
 }
 
 pub async fn create_baseline(pool: &SqlitePool, portfolio_id: i64, baseline_name: &str) -> DbResult<PlanVersion> {
@@ -835,6 +905,7 @@ pub async fn add_actual_cost(
     work_date: NaiveDate,
     actual_cost: f64,
 ) -> DbResult<ActualCost> {
+    ensure_wbs_is_draft_activity(pool, wbs_element_id).await?;
     let id = sqlx::query(
         "INSERT INTO actual_costs (wbs_element_id, user_id, work_date, actual_cost) VALUES (?, ?, ?, ?)",
     )
@@ -860,6 +931,7 @@ pub async fn upsert_actual_cost(
     work_date: NaiveDate,
     actual_cost: Option<f64>,
 ) -> DbResult<()> {
+    ensure_wbs_is_draft_activity(pool, wbs_element_id).await?;
     let mut tx = pool.begin().await?;
     upsert_actual_cost_tx(&mut tx, wbs_element_id, user_id, work_date, actual_cost).await?;
     tx.commit().await?;
@@ -918,6 +990,8 @@ pub async fn upsert_actual_costs_bulk(
     pool: &SqlitePool,
     costs: &[ActualCostBulkItem],
 ) -> DbResult<()> {
+    let wbs_ids: Vec<i64> = costs.iter().map(|c| c.wbs_element_id).collect();
+    ensure_wbs_list_are_draft_activities(pool, &wbs_ids).await?;
     let mut tx = pool.begin().await?;
 
     for cost in costs {
@@ -1061,6 +1135,7 @@ pub async fn add_progress_update(
     progress_percent: f64,
     notes: Option<&str>,
 ) -> DbResult<ProgressUpdate> {
+    ensure_wbs_is_draft_activity(pool, wbs_element_id).await?;
     let id = sqlx::query(
         "INSERT INTO progress_updates (wbs_element_id, reported_by_user_id, report_date, progress_percent, notes) VALUES (?, ?, ?, ?, ?)",
     )
@@ -1115,6 +1190,7 @@ pub async fn list_all_progress_updates_for_plan_version(pool: &SqlitePool, plan_
 }
 
 pub async fn upsert_progress_update(pool: &SqlitePool, wbs_element_id: i64, reported_by_user_id: i64, report_date: NaiveDate, progress_percent: Option< f64 >) -> DbResult< () > {
+    ensure_wbs_is_draft_activity(pool, wbs_element_id).await?;
     let mut tx = pool.begin().await?;
     upsert_progress_update_tx(&mut tx, wbs_element_id, reported_by_user_id, report_date, progress_percent).await?;
     tx.commit().await?;
@@ -1139,6 +1215,8 @@ pub async fn upsert_progress_update_tx(
 }
 
 pub async fn upsert_progress_updates_bulk(pool: &SqlitePool, reported_by_user_id: i64, items: &[ProgressUpdateBulkItem]) -> DbResult< () > {
+    let wbs_ids: Vec<i64> = items.iter().map(|i| i.wbs_element_id).collect();
+    ensure_wbs_list_are_draft_activities(pool, &wbs_ids).await?;
     for item in items {
         upsert_progress_update(pool, item.wbs_element_id, reported_by_user_id, item.report_date, item.progress_percent).await?;
     }
@@ -1230,6 +1308,7 @@ pub async fn list_plan_milestones(pool: &SqlitePool, plan_version_id: i64) -> Db
 }
 
 pub async fn add_plan_milestone(pool: &SqlitePool, plan_version_id: i64, portfolio_id: i64, name: &str, target_date: &str) -> DbResult<PlanMilestone> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
     let global_id = sqlx::query("INSERT INTO milestones (portfolio_id) VALUES (?)").bind(portfolio_id).execute(&mut *tx).await?.last_insert_rowid();
     let id = sqlx::query("INSERT INTO plan_milestones (plan_version_id, milestone_id, name, target_date) VALUES (?, ?, ?, ?)").bind(plan_version_id).bind(global_id).bind(name).bind(target_date).execute(&mut *tx).await?.last_insert_rowid();
@@ -1239,12 +1318,15 @@ pub async fn add_plan_milestone(pool: &SqlitePool, plan_version_id: i64, portfol
 }
 
 pub async fn update_plan_milestone(pool: &SqlitePool, id: i64, name: &str, target_date: &str) -> DbResult<PlanMilestone> {
+    let (plan_version_id,): (i64,) = sqlx::query_as("SELECT plan_version_id FROM plan_milestones WHERE id = ?").bind(id).fetch_one(pool).await?;
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     sqlx::query("UPDATE plan_milestones SET name = ?, target_date = ? WHERE id = ?").bind(name).bind(target_date).bind(id).execute(pool).await?;
     let milestone = sqlx::query_as::<_, PlanMilestone>("SELECT * FROM plan_milestones WHERE id = ?").bind(id).fetch_one(pool).await?;
     Ok(milestone)
 }
 
 pub async fn delete_plan_milestone(pool: &SqlitePool, id: i64, plan_version_id: i64) -> DbResult<u64> {
+    ensure_plan_is_draft(pool, plan_version_id).await?;
     let mut tx = pool.begin().await?;
     let rows = sqlx::query("UPDATE plan_milestones SET is_deleted = 1 WHERE id = ?").bind(id).execute(&mut *tx).await?.rows_affected();
     sqlx::query("UPDATE wbs_element_details SET milestone_id = NULL WHERE plan_version_id = ? AND milestone_id = (SELECT milestone_id FROM plan_milestones WHERE id = ?)").bind(plan_version_id).bind(id).execute(&mut *tx).await?;

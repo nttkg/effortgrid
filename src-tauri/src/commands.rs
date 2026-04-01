@@ -395,73 +395,6 @@ pub async fn list_pv_allocations_for_wbs_element(
     Ok(allocations)
 }
 
-/// Checks if a WBS element is an 'Activity' in the portfolio's current draft plan.
-async fn check_is_activity_in_draft(pool: &SqlitePool, wbs_element_id: i64) -> AppResult<()> {
-    let (portfolio_id,): (i64,) = sqlx::query_as("SELECT portfolio_id FROM wbs_elements WHERE id = ?")
-        .bind(wbs_element_id)
-        .fetch_one(pool)
-        .await
-        .map_err(db::DbError::from)?;
-
-    let (draft_plan_id,): (i64,) =
-        sqlx::query_as("SELECT id FROM plan_versions WHERE portfolio_id = ? AND is_draft = true")
-            .bind(portfolio_id)
-            .fetch_one(pool)
-            .await
-            .map_err(db::DbError::from)?;
-
-    let (element_type,): (String,) = sqlx::query_as(
-        "SELECT element_type FROM wbs_element_details WHERE wbs_element_id = ? AND plan_version_id = ?",
-    )
-    .bind(wbs_element_id)
-    .bind(draft_plan_id)
-    .fetch_one(pool)
-    .await
-    .map_err(db::DbError::from)?;
-
-    if element_type == "Activity" {
-        Ok(())
-    } else {
-        Err(AppError::DbError(
-            "Actual costs and progress can only be reported for 'Activity' elements.".to_string(),
-        ))
-    }
-}
-
-/// Efficiently checks if a list of WBS elements are all 'Activity' types in the draft plan.
-async fn check_are_activities_in_draft(pool: &SqlitePool, wbs_element_ids: &[i64]) -> AppResult<()> {
-    if wbs_element_ids.is_empty() {
-        return Ok(());
-    }
-
-    let unique_ids: std::collections::HashSet<_> = wbs_element_ids.iter().collect();
-    if unique_ids.is_empty() {
-        return Ok(());
-    }
-
-    let params = unique_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-    let sql = format!(
-        "SELECT COUNT(DISTINCT wd.wbs_element_id) FROM wbs_element_details wd
-         JOIN plan_versions pv ON wd.plan_version_id = pv.id
-         WHERE wd.wbs_element_id IN ({}) AND pv.is_draft = true AND wd.element_type = 'Activity'",
-        params
-    );
-
-    let mut query = sqlx::query_scalar::<_, i64>(&sql);
-    for id in &unique_ids {
-        query = query.bind(id);
-    }
-
-    let activity_count = query.fetch_one(pool).await.map_err(db::DbError::from)?;
-
-    if activity_count as usize == unique_ids.len() {
-        Ok(())
-    } else {
-        Err(AppError::DbError(
-            "All elements must be 'Activity' types in the current draft plan.".to_string(),
-        ))
-    }
-}
 
 
 async fn check_is_activity(
@@ -677,7 +610,6 @@ pub async fn add_actual_cost(
 ) -> AppResult<ActualCost> {
     let pool_guard = state.pool.read().await;
     let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
-    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     let record = db::add_actual_cost(
         pool,
         payload.wbs_element_id,
@@ -696,7 +628,6 @@ pub async fn upsert_actual_cost(
 ) -> AppResult<()> {
     let pool_guard = state.pool.read().await;
     let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
-    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     db::upsert_actual_cost(
         pool,
         payload.wbs_element_id,
@@ -715,9 +646,6 @@ pub async fn upsert_actual_costs_bulk(
 ) -> AppResult<()> {
     let pool_guard = state.pool.read().await;
     let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
-    let wbs_ids: Vec<i64> = payload.costs.iter().map(|c| c.wbs_element_id).collect();
-    check_are_activities_in_draft(pool, &wbs_ids).await?;
-
     db::upsert_actual_costs_bulk(pool, &payload.costs).await?;
     Ok(())
 }
@@ -740,7 +668,6 @@ pub async fn add_progress_update(
 ) -> AppResult<ProgressUpdate> {
     let pool_guard = state.pool.read().await;
     let pool = pool_guard.as_ref().ok_or_else(|| AppError::DbError("No database is currently open".to_string()))?;
-    check_is_activity_in_draft(pool, payload.wbs_element_id).await?;
     // For now, hardcode user_id as 1.
     let user_id = 1;
     let record = db::add_progress_update(

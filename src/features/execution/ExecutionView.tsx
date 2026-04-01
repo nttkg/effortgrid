@@ -66,6 +66,7 @@ const ProgressInputCell = React.memo(({ wbsElementId, date, initialValue, onComm
   useEffect(() => { setValue(initialValue ?? ''); }, [initialValue]);
 
   const handleBlur = () => {
+    if (isReadOnly) { setValue(initialValue ?? ''); return; }
     const numericValue = value === '' ? null : Number(value);
     const initialNumericValue = initialValue ?? null;
     if (numericValue !== initialNumericValue) onCommit(wbsElementId, date, numericValue);
@@ -81,7 +82,7 @@ const ProgressInputCell = React.memo(({ wbsElementId, date, initialValue, onComm
           color: value !== '' ? 'var(--mantine-color-teal-4)' : undefined 
         }}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => { if (!isReadOnly) setValue(e.target.value); }}
         onBlur={handleBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -114,6 +115,7 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
   useEffect(() => { setValue(initialPv ?? ''); }, [initialPv]);
 
   const handleBlur = () => {
+    if (isReadOnly) { setValue(initialPv ?? ''); return; }
     const numericValue = value === '' ? null : Number(value);
     const initialNumericValue = initialPv ?? null;
     if (numericValue !== initialNumericValue) onCommit(wbsElementId, userId, date, numericValue);
@@ -129,7 +131,7 @@ const PvInputCell = React.memo(({ wbsElementId, userId, date, initialPv, onCommi
         color: 'var(--mantine-color-blue-3)'
       }}
       value={value}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => { if (!isReadOnly) setValue(e.target.value); }}
       onBlur={handleBlur}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -163,6 +165,7 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
   useEffect(() => { setValue(initialAc ?? ''); }, [initialAc]);
 
   const handleBlur = () => {
+    if (isReadOnly) { setValue(initialAc ?? ''); return; }
     const numericValue = value === '' ? null : Number(value);
     const initialNumericValue = initialAc ?? null;
     if (numericValue !== initialNumericValue) onCommit(wbsElementId, userId, date, numericValue);
@@ -177,7 +180,7 @@ const AcInputCell = React.memo(({ wbsElementId, userId, date, initialAc, onCommi
         cursor: 'cell'
       }}
       value={value}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => { if (!isReadOnly) setValue(e.target.value); }}
       onBlur={handleBlur}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -1312,8 +1315,11 @@ export function ExecutionView({ planVersionId, isReadOnly }: GridProps) {
     const { key } = e;
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Backspace'].includes(key)) return;
     
-    // Weeklyモードでは一括削除の挙動が複雑なためDelete/Backspaceのみ無効化（矢印キーは許可）
-    if (viewMode === 'weekly' && ['Delete', 'Backspace'].includes(key)) return;
+    // 読み取り専用時、またはWeeklyモード時は削除操作を完全に無効化（矢印移動のみ許可）
+    if ((isReadOnly || viewMode === 'weekly') && ['Delete', 'Backspace'].includes(key)) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
 
     const findRowIndex = (wbsId: number, uId: number) => activityRowIds.findIndex(r => r.wbsId === wbsId && r.userId === uId);
